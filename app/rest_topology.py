@@ -19,7 +19,8 @@ from webob import Response
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.base import app_manager
 from ryu.lib import dpid as dpid_lib
-from ryu.topology.api import get_switch, get_link
+from ryu.topology.api import get_switch, get_link, get_clink, \
+                        get_lldp_interval, set_lldp_interval
 
 # REST API for switch configuration
 #
@@ -76,6 +77,28 @@ class TopologyController(ControllerBase):
     def get_links(self, req, **kwargs):
         return self._links(req, **kwargs)
 
+    # by jesse
+    @route('topology', '/v1.0/topology/clinks',
+           methods=['GET'])
+    def list_clinks(self, req, **kwargs):
+        return self._clinks(req, **kwargs)
+
+    @route('topology', '/v1.0/topology/clinks/{dpid}',
+           methods=['GET'], requirements={'dpid': dpid_lib.DPID_PATTERN})
+    def get_clinks(self, req, **kwargs):
+        return self._clinks(req, **kwargs)
+
+    # by jesse 
+    @route('topology', '/v1.0/topology/lldp',
+           methods=['GET'])
+    def get_lldp(self, req, **kwargs):
+        return self._lldp(req, **kwargs)
+
+    @route('topology', '/v1.0/topology/lldp',
+           methods=['POST'])
+    def set_lldp(self, req, **kwargs):
+        return self._lldp(req, **kwargs)
+
     def _switches(self, req, **kwargs):
         dpid = None
         if 'dpid' in kwargs:
@@ -91,3 +114,30 @@ class TopologyController(ControllerBase):
         links = get_link(self.topology_api_app, dpid)
         body = json.dumps([link.to_dict() for link in links])
         return Response(content_type='application/json', body=body)
+
+    # by jesse
+    def _clinks(self, req, **kwargs):
+        dpid = None
+        #if 'dpid' in kwargs:
+        #   dpid = dpid_lib.str_to_dpid(kwargs['dpid'])
+        links = get_clink(self.topology_api_app, dpid)
+        body = json.dumps([link.to_dict() for link in links])
+        return Response(content_type='application/json', body=body)
+
+    # by jesse
+    def _lldp(self, req, **kwargs):
+        print "AAAA"
+        if req.method == 'GET':
+            req_interval = get_lldp_interval(self.topology_api_app, req.method)
+            print req
+        elif req.method == 'POST':
+            interval = req.params['interval']
+            if interval is not None :
+                req_interval = set_lldp_interval(self.topology_api_app, req.method, interval)
+            else:
+                req_interval = ""
+
+        dict = { "interval":req_interval }
+        body = json.dumps(dict)
+        return Response(content_type='application/json', body=body)
+
