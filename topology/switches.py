@@ -20,6 +20,7 @@ import json
 from ryu import cfg
 
 from ryu.topology import event
+
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import set_ev_cls
@@ -36,6 +37,7 @@ from ryu.ofproto import nx_match
 from ryu.ofproto import ofproto_v1_2
 from ryu.ofproto import ofproto_v1_3
 from ryu.ofproto import ofproto_v1_4
+
 
 
 LOG = logging.getLogger(__name__)
@@ -753,12 +755,6 @@ class Switches(app_manager.RyuApp):
         
         if not src: # by jesse : save other controller link
                
-            #print "src_dpid=" + str(src_dpid)
-            #print "src_port_no=" + str(src_port_no)
-            #dst = self._get_port(dst_dpid, dst_port_no)
-            #print "dst_dpid=" + str(dst_dpid)
-            #print "dst_port_no=" + str(dst_port_no)
-            
             dst_port = self._get_port(dst_dpid, dst_port_no)
             if not dst_port:
                 # remove link
@@ -779,9 +775,6 @@ class Switches(app_manager.RyuApp):
                 self.clinks.update_link(dst_port, src_port)
             
             self.lldp_event.set()
-            #self.send_lldp_packet(dst_port)
-            #print src_port
-            #print dst_port
 
 
             return
@@ -868,7 +861,6 @@ class Switches(app_manager.RyuApp):
                 continue
 
             for (port, port_data) in self.ports.items():
-                print port_data
                 if port_data.timestamp is None:
 
                     ports_now.append(port)
@@ -903,10 +895,7 @@ class Switches(app_manager.RyuApp):
 
             # by jesse
             for (link, timestamp) in self.clinks.items():
-                print link
-                print timestamp
                 if timestamp + self.LINK_TIMEOUT < now:
-                    print "timeout"
                     src = link.src
                     if src in self.ports:
                         cdeleted.append(link)
@@ -991,4 +980,4 @@ class Switches(app_manager.RyuApp):
 
         rep = event.EventLLDPReply(req.src, self.LLDP_SEND_PERIOD_PER_PORT)
         self.reply_to_request(req, rep)
-    
+

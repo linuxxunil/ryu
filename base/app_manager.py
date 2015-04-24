@@ -39,6 +39,7 @@ from ryu.controller.event import EventRequestBase, EventReplyBase
 from ryu.lib import hub
 from ryu.ofproto import ofproto_protocol
 
+
 LOG = logging.getLogger('ryu.base.app_manager')
 
 SERVICE_BRICKS = {}
@@ -223,6 +224,7 @@ class RyuApp(object):
                       The default is None.
         """
         ev_cls = ev.__class__
+
         handlers = self.event_handlers.get(ev_cls, [])
         if state is None:
             return handlers
@@ -265,10 +267,11 @@ class RyuApp(object):
         return req.reply_q.get()
 
     def _event_loop(self):
-        while self.is_active or not self.events.empty():
+        while self.is_active or not self.events.empty(): 
             ev, state = self.events.get()
             if ev == self._event_stop:
                 continue
+
             handlers = self.get_handlers(ev, state)
             for handler in handlers:
                 handler(ev)
@@ -372,12 +375,14 @@ class AppManager(object):
         app_lists = [app for app
                      in itertools.chain.from_iterable(app.split(',')
                                                       for app in app_lists)]
+    
         while len(app_lists) > 0:
             app_cls_name = app_lists.pop(0)
 
             context_modules = map(lambda x: x.__module__,
                                   self.contexts_cls.values())
             if app_cls_name in context_modules:
+                LOG.info('loading app %s', app_cls_name)
                 continue
 
             LOG.info('loading app %s', app_cls_name)

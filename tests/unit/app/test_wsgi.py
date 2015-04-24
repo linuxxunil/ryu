@@ -17,7 +17,7 @@
 
 import unittest
 import logging
-from nose.tools import *
+#from nose.tools import *
 
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from webob.response import Response

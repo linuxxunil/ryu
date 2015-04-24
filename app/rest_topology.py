@@ -126,10 +126,8 @@ class TopologyController(ControllerBase):
 
     # by jesse
     def _lldp(self, req, **kwargs):
-        print "AAAA"
         if req.method == 'GET':
             req_interval = get_lldp_interval(self.topology_api_app, req.method)
-            print req
         elif req.method == 'POST':
             interval = req.params['interval']
             if interval is not None :
