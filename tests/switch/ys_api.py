@@ -13,23 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-
-from ryu.topology import event
 from ryu.base import app_manager
-from ryu.controller.handler import set_ev_cls
-from ryu.tests.switch import event as rest_event
+from ryu.tests.switch import ys_event as event
 
+def do_test_item(app, item):
+	rep = app.send_request(event.EventTestItemRequest(item))
+	return rep.status, rep.description, rep.target_dpid
 
-class Tests(app_manager.RyuApp):
-    def __init__(self, *args, **kwargs):
-        super(Tests, self).__init__(*args, **kwargs)
-        self.name = 'tests
+def get_test_item(app):
+	rep = app.send_request(event.EventTestItemResultRequest())
+	return rep.result, rep.target_dpid, rep.state, rep.test_item
 
-    # by jesse
-    @set_ev_cls(rest_event.EventTestRequest)
-    def test_request_handler(self, req):
-        print "test request handler"
-        rep = rest_event.EventTestReply(req.src)
-        self.reply_to_request(req, rep)
-    
+def stop_test_item(app):
+	rep = app.send_request(event.EventTestItemStopRequest())
+	return rep.state
+
+app_manager.require_app('ryu.tests.switch.ys_tester', api_style=True)

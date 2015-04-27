@@ -18,8 +18,9 @@ import struct
 import time
 import json
 from ryu import cfg
+#by jesse
 
-from ryu.topology import event
+from ryu.topology import ys_event as event
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import set_ev_cls
@@ -43,15 +44,15 @@ LOG = logging.getLogger(__name__)
 
 CONF = cfg.CONF
 
-CONF.register_cli_opts([
-    cfg.BoolOpt('observe-links', default=False,
-                help='observe link discovery events.'),
-    cfg.BoolOpt('install-lldp-flow', default=True,
-                help='link discovery: explicitly install flow entry '
-                     'to send lldp packet to controller'),
-    cfg.BoolOpt('explicit-drop', default=True,
-                help='link discovery: explicitly drop lldp packet in')
-])
+#CONF.register_cli_opts([
+#    cfg.BoolOpt('observe-links', default=False,
+#                help='observe link discovery events.'),
+#    cfg.BoolOpt('install-lldp-flow', default=True,
+#                help='link discovery: explicitly install flow entry '
+#                     'to send lldp packet to controller'),
+#    cfg.BoolOpt('explicit-drop', default=True,
+#                help='link discovery: explicitly drop lldp packet in')
+#])
 
 
 class Port(object):
@@ -61,12 +62,12 @@ class Port(object):
 
         self.dpid = dpid
         self._ofproto = ofproto
-        self._config = ofpport.config
-        self._state = ofpport.state
-
-        self.port_no = ofpport.port_no
-        self.hw_addr = ofpport.hw_addr
-        self.name = ofpport.name
+        if ofpport is not None :
+            self._config = ofpport.config
+            self._state = ofpport.state
+            self.port_no = ofpport.port_no
+            self.hw_addr = ofpport.hw_addr
+            self.name = ofpport.name
 
     def is_reserved(self):
         return self.port_no > self._ofproto.OFPP_MAX
@@ -74,6 +75,48 @@ class Port(object):
     def is_down(self):
         return (self._state & self._ofproto.OFPPS_LINK_DOWN) > 0 \
             or (self._config & self._ofproto.OFPPC_PORT_DOWN) > 0
+
+    def is_live(self):
+        # NOTE: OF1.2 has OFPPS_LIVE state
+        #       return (self._state & self._ofproto.OFPPS_LIVE) > 0
+        return not self.is_down()
+
+    def to_dict(self):
+        return {'dpid': dpid_to_str(self.dpid),
+                'port_no': port_no_to_str(self.port_no),
+                'hw_addr': self.hw_addr,
+                'name': self.name.rstrip('\0')}
+
+    # for Switch.del_port()
+    def __eq__(self, other):
+        return self.dpid == other.dpid and self.port_no == other.port_no
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.dpid, self.port_no))
+
+    def __str__(self):
+        LIVE_MSG = {False: 'DOWN', True: 'LIVE'}
+        return 'Port<dpid=%s, port_no=%s, %s>' % \
+            (self.dpid, self.port_no, LIVE_MSG[self.is_live()])
+
+# by Jesse
+class YsPort(Port):
+    # This is data class passed by EventPortXXX
+    def __init__(self, hw_addr, dpid, port_no):
+        super(YsPort, self).__init__(dpid, None, None)
+
+        self.dpid = dpid
+        self.port_no = port_no
+        self.hw_addr = hw_addr
+        self.isLink = True
+        self.isPortUp = True
+        self.name = "cPort"
+
+    def is_down(self):
+        return (self.isPortUp & self.isLink < 0)
 
     def is_live(self):
         # NOTE: OF1.2 has OFPPS_LIVE state
@@ -422,8 +465,8 @@ class LLDPPacket(object):
             raise LLDPPacket.LLDPUnknownFormat(
                 msg='unknown port id %d' % port_id)
         (src_port_no, ) = struct.unpack(LLDPPacket.PORT_ID_STR, port_id)
-
-        return src_dpid, src_port_no
+        # by jesse : return source mac
+        return src_dpid, src_port_no, eth_pkt.src
 
 
 class Switches(app_manager.RyuApp):
@@ -438,7 +481,7 @@ class Switches(app_manager.RyuApp):
     LLDP_PACKET_LEN = len(LLDPPacket.lldp_packet(0, 0, DONTCARE_STR, 0))
 
     LLDP_SEND_GUARD = .05
-    LLDP_SEND_PERIOD_PER_PORT = 2
+    LLDP_SEND_PERIOD_PER_PORT = 5
     TIMEOUT_CHECK_PERIOD = 5.
     LINK_TIMEOUT = TIMEOUT_CHECK_PERIOD * 2
     LINK_LLDP_DROP = 5
@@ -452,6 +495,10 @@ class Switches(app_manager.RyuApp):
         self.ports = PortDataState()  # Port class -> PortData class
         self.links = LinkState()      # Link class -> timestamp
         self.is_active = True
+
+        # by jesse : for controller link
+        self.cports = PortDataState()
+        self.clinks = LinkState()
 
         self.link_discovery = self.CONF.observe_links
         if self.link_discovery:
@@ -686,7 +733,8 @@ class Switches(app_manager.RyuApp):
 
         msg = ev.msg
         try:
-            src_dpid, src_port_no = LLDPPacket.lldp_parse(msg.data)
+            # by jesse : add src_hw_addr
+            src_dpid, src_port_no, src_hw_addr = LLDPPacket.lldp_parse(msg.data)
         except LLDPPacket.LLDPUnknownFormat as e:
             # This handler can receive all the packtes which can be
             # not-LLDP packet. Ignore it silently
@@ -701,8 +749,35 @@ class Switches(app_manager.RyuApp):
             LOG.error('cannot accept LLDP. unsupported version. %x',
                       msg.datapath.ofproto.OFP_VERSION)
 
+        ####### check src port
         src = self._get_port(src_dpid, src_port_no)
-        if not src or src.dpid == dst_dpid:
+        
+        if not src: # by jesse : save other controller link
+               
+            dst_port = self._get_port(dst_dpid, dst_port_no)
+            if not dst_port:
+                # remove link
+                return
+
+            try:
+                self.ports.lldp_received(dst_port)
+            except KeyError:
+                pass
+
+            src_port = self.clinks.get_peer(dst_port)
+
+            if src_port and src_port != dst_port:
+                self.clinks.update_link(dst_port, src_port)
+            else :
+                pass
+                src_port = YsPort(src_hw_addr, src_dpid, src_port_no)
+                self.clinks.update_link(dst_port, src_port)
+            
+            self.lldp_event.set()
+
+
+            return
+        elif src.dpid == dst_dpid:
             return
         try:
             self.ports.lldp_received(src)
@@ -713,6 +788,7 @@ class Switches(app_manager.RyuApp):
             # LOG.debug('lldp_received: KeyError %s', e)
             pass
 
+        ###### check dst port
         dst = self._get_port(dst_dpid, dst_port_no)
         if not dst:
             return
@@ -722,6 +798,7 @@ class Switches(app_manager.RyuApp):
         # LOG.debug("  src=%s", src)
         # LOG.debug("  dst=%s", dst)
         # LOG.debug("  old_peer=%s", old_peer)
+        ###### check link whether is change
         if old_peer and old_peer != dst:
             old_link = Link(src, old_peer)
             self.send_event_to_observers(event.EventLinkDelete(old_link))
@@ -777,14 +854,20 @@ class Switches(app_manager.RyuApp):
             timeout = None
             ports_now = []
             ports = []
-            for (key, data) in self.ports.items():
-                if data.timestamp is None:
-                    ports_now.append(key)
+            
+            if self.LLDP_SEND_PERIOD_PER_PORT == 0:
+                self.lldp_event.wait(timeout=timeout)
+                continue
+
+            for (port, port_data) in self.ports.items():
+                if port_data.timestamp is None:
+
+                    ports_now.append(port)
                     continue
 
-                expire = data.timestamp + self.LLDP_SEND_PERIOD_PER_PORT
+                expire = port_data.timestamp + self.LLDP_SEND_PERIOD_PER_PORT
                 if expire <= now:
-                    ports.append(key)
+                    ports.append(port)
                     continue
 
                 timeout = expire - now
@@ -807,6 +890,19 @@ class Switches(app_manager.RyuApp):
 
             now = time.time()
             deleted = []
+            cdeleted = []
+
+            # by jesse
+            for (link, timestamp) in self.clinks.items():
+                if timestamp + self.LINK_TIMEOUT < now:
+                    src = link.src
+                    if src in self.ports:
+                        cdeleted.append(link)
+            
+            for link in cdeleted:
+                self.clinks.link_down(link)
+                self.lldp_event.set()
+
             for (link, timestamp) in self.links.items():
                 # LOG.debug('%s timestamp %d (now %d)', link, timestamp, now)
                 if timestamp + self.LINK_TIMEOUT < now:
@@ -861,5 +957,26 @@ class Switches(app_manager.RyuApp):
         else:
             links = [link for link in self.links if link.src.dpid == dpid]
         rep = event.EventLinkReply(req.src, dpid, links)
+        self.reply_to_request(req, rep)
+
+    @set_ev_cls(event.EventCLinkRequest)
+    def clink_request_handler(self, req):
+        # LOG.debug(req)
+        dpid = req.dpid
+        if dpid is None:
+            links = self.clinks
+        else:
+            links = [clink for link in self.clinks if link.src.dpid == dpid]
+        rep = event.EventCLinkReply(req.src, dpid, self.clinks)
+        self.reply_to_request(req, rep)
+
+    # by jesse
+    @set_ev_cls(event.EventLLDPRequest)
+    def lldp_request_handler(self, req):
+        if req.method == 'POST':
+            if req.interval is not None :
+                self.LLDP_SEND_PERIOD_PER_PORT = float(req.interval)
+
+        rep = event.EventLLDPReply(req.src, self.LLDP_SEND_PERIOD_PER_PORT)
         self.reply_to_request(req, rep)
 

@@ -127,3 +127,46 @@ class EventLinkReply(event.EventReplyBase):
         return 'EventLinkReply<dst=%s, dpid=%s, links=%s>' % \
             (self.dst, self.dpid, len(self.links))
 
+
+# by jesse
+class EventCLinkRequest(event.EventRequestBase):
+    # If dpid is None, reply all list
+    def __init__(self, dpid=None):
+        super(EventCLinkRequest, self).__init__()
+        self.dst = 'switches'
+        self.dpid = dpid
+
+    def __str__(self):
+        return 'EventCLinkRequest<src=%s, dpid=%s>' % \
+            (self.src, self.dpid)
+
+class EventCLinkReply(event.EventReplyBase):
+    def __init__(self, dst, dpid, links):
+        super(EventCLinkReply, self).__init__(dst)
+        self.dpid = dpid
+        self.links = links
+
+    def __str__(self):
+        return 'EventLinkReply<dst=%s, dpid=%s, links=%s>' % \
+            (self.dst, self.dpid, len(self.links))
+
+# by jesse
+class EventLLDPRequest(event.EventRequestBase):
+    def __init__(self, method, interval = None):
+        super(EventLLDPRequest, self).__init__()
+        self.dst = 'switches'
+        self.method = method
+        self.interval = interval
+      
+    def __str__(self):
+        return 'EventLLDPRequest<src=%s>' % \
+            (self.src)
+# by jesse
+class EventLLDPReply(event.EventReplyBase):
+    def __init__(self, dst, interval):
+        super(EventLLDPReply, self).__init__(dst)
+        self.interval = interval
+
+    def __str__(self):
+        return 'EventLLDPReply<dst=%s, interval=%f, interval>' % \
+            (self.dst, self.interval)

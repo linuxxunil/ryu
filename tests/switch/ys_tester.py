@@ -53,7 +53,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.ofproto import ofproto_v1_3_parser
 from ryu.ofproto import ofproto_v1_4
 from ryu.ofproto import ofproto_v1_5
-from ryu.tests.switch import event as rest_event
+from ryu.tests.switch import ys_event as rest_event
 
 
 
@@ -400,11 +400,14 @@ class OfTester(app_manager.RyuApp):
         if ev.state == handler.MAIN_DISPATCHER:
             self.evnet_ofp_state_change = ev.state
             #self._register_sw(ev.datapath)
-            self.connected_list[ev.datapath.id] = ev.datapath
+            if ev.datapath.id is not None:
+              self.connected_list[ev.datapath.id] = ev.datapath
         elif ev.state == handler.DEAD_DISPATCHER:
             self.evnet_ofp_state_change = ev.state
             #self._unregister_sw(ev.datapath)
-            del self.connected_list[ev.datapath.id]
+
+            if ev.datapath.id is not None:
+              del self.connected_list[ev.datapath.id]
             
     def _register_sw(self, dp):
         vers = {

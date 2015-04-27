@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from ryu.base import app_manager
-from ryu.topology import event
+from ryu.topology import ys_event as event
 
 
 def get_switch(app, dpid=None):
@@ -34,6 +34,20 @@ def get_link(app, dpid=None):
 def get_all_link(app):
     return get_link(app)
 
+# by jesse
+def get_clink(app, dpid=None):
+	rep = app.send_request(event.EventCLinkRequest(dpid))
+	return rep.links
 
-app_manager.require_app('ryu.topology.switches', api_style=True)
 
+# by jesse
+def get_lldp_interval(app, method):
+	rep = app.send_request(event.EventLLDPRequest(method))
+	return rep.interval 
+
+def set_lldp_interval(app, method, interval):
+	rep = app.send_request(event.EventLLDPRequest(method, interval))
+	return rep.interval
+
+
+app_manager.require_app('ryu.topology.ys_switches', api_style=True)

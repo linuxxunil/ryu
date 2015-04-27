@@ -19,7 +19,7 @@ from webob import Response
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.base import app_manager
 from ryu.lib import dpid as dpid_lib
-from ryu.tests.switch.api import *
+from ryu.tests.switch.ys_api import *
 from collections import OrderedDict
 
 """ Required test network:
@@ -59,24 +59,54 @@ from collections import OrderedDict
 
 # REST API for tester configuration
 #
+# get test item status
+# GET /tests/switch/item
 #
-# test a queue to the switches
-# POST /tests/switch
+# stop test status
+# DELETE /tests/switch/item
+#
+# start test item
+# POST /tests/switch/item
 #
 # request body format:
 #  {"sw_target_version" : "<openflow13 or openflow14>",
-#   "sw_target_dpid" : "<dpid>",
+#   "sw_target_dpid" : "<int>",
 #   "sw_target_recv_port"   : "<int>",
 #   "sw_target_send_port_1" : "<int>",
 #   "sw_target_send_port_2" : "<int>",
-#   "sw_tester_dpid" : "<dpid>",
+#   "sw_tester_dpid" : "<int>",
 #   "sw_tester_recv_port" : "<int>",
 #   "sw_tester_send_port_1" : "<int>",
 #   "sw_tester_send_port_2" : "<int>"
 #   "sw_test_item : "[ryu test format]"}
-#
-# where
-# <dpid>: datapath id in 16 hex
+# 
+# Example :
+'''
+{"target_version":"openflow13","target_dpid":1,"target_recv_port":1,
+"target_send_port_1":2,"target_send_port_2":3,"tester_version":"openflow13",
+"tester_dpid":2,"tester_send_port":1,"tester_recv_port_1":2,"tester_recv_port_2":3,
+"test_item":["action: 19_PUSH_MPLS",{"description":"ethernet/ipv4/tcp-->'eth_type=0x0800,actions=push_mpls:0x8847,output:2'",
+"prerequisite":[{"OFPFlowMod":{"table_id":0,"match":{"OFPMatch":{"oxm_fields":[{"OXMTlv":{"field":"eth_type","value":2048}}]}},
+"instructions":[{"OFPInstructionActions":{"actions":[{"OFPActionPushMpls":{"ethertype":34887}},
+{"OFPActionOutput":{"port":2}}],"type":4}}]}}],"tests":[{"ingress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=2048)",
+"ipv4(tos=32, proto=6, src='192.168.10.10', dst='192.168.20.20', ttl=64)","tcp(dst_port=2222, option=str('\\x00' * 4), src_port=11111)",
+"'\\x01\\x02\\x03\\x04\\x05\\x06\\x07\\x08\\t\\n\\x0b\\x0c\\r\\x0e\\x0f\\x10\\x11\\x12\\x13\\x14\\x15\\x16\\x17\\x18\\x19\\x1a\\x1b\\x1c\\x1d\\x1e\\x1f'"],
+"egress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=34887)","mpls(ttl=64)","ipv4(tos=32, proto=6, src='192.168.10.10', dst='192.168.20.20', ttl=64)",
+"tcp(dst_port=2222, option=str('\\x00' * 4), src_port=11111)","'\\x01\\x02\\x03\\x04\\x05\\x06\\x07\\x08\\t\\n\\x0b\\x0c\\r\\x0e\\x0f\\x10\\x11\\x12\\x13\\x14\\x15\\x16\\x17\\x18\\x19\\x1a\\x1b\\x1c\\x1d\\x1e\\x1f'"]}]},
+{"description":"ethernet/ipv6/tcp-->'eth_type=0x86dd,actions=push_mpls:0x8847,output:2'",
+"prerequisite":[{"OFPFlowMod":{"table_id":0,"match":{"OFPMatch":{"oxm_fields":[{"OXMTlv":{"field":"eth_type","value":34525}}]}},
+"instructions":[{"OFPInstructionActions":{"actions":[{"OFPActionPushMpls":{"ethertype":34887}},{"OFPActionOutput":{"port":2}}],"type":4}}]}}],
+"tests":[{"ingress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=34525)",
+"ipv6(dst='20::20', flow_label=100, src='10::10', nxt=6, hop_limit=64, traffic_class=32)","tcp(dst_port=2222, option=str('\\x00' * 4), src_port=11111)",
+"'\\x01\\x02\\x03\\x04\\x05\\x06\\x07\\x08\\t\\n\\x0b\\x0c\\r\\x0e\\x0f\\x10\\x11\\x12\\x13\\x14\\x15\\x16\\x17\\x18\\x19\\x1a\\x1b\\x1c\\x1d\\x1e\\x1f'"],
+"egress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=34887)","mpls(ttl=64)",
+"ipv6(dst='20::20', flow_label=100, src='10::10', nxt=6, hop_limit=64, traffic_class=32)",
+"tcp(dst_port=2222, option=str('\\x00' * 4), src_port=11111)","'\\x01\\x02\\x03\\x04\\x05\\x06\\x07\\x08\\t\\n\\x0b\\x0c\\r\\x0e\\x0f\\x10\\x11\\x12\\x13\\x14\\x15\\x16\\x17\\x18\\x19\\x1a\\x1b\\x1c\\x1d\\x1e\\x1f'"]}]},
+{"description":"ethernet/arp-->'eth_type=0x0806,actions=push_mpls:0x8847,output:2'","prerequisite":[{"OFPFlowMod":{"table_id":0,"match":{"OFPMatch":{"oxm_fields":[{"OXMTlv":{"field":"eth_type","value":2054}}]}},
+"instructions":[{"OFPInstructionActions":{"actions":[{"OFPActionPushMpls":{"ethertype":34887}},{"OFPActionOutput":{"port":2}}],"type":4}}]}}],"tests":[{"ingress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=2054)",
+"arp(dst_ip='192.168.20.20',dst_mac='22:22:22:22:22:22', opcode=1, src_ip='192.168.10.10',src_mac='12:11:11:11:11:11')","str('\\x00' * (60 - 42))"],"egress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=34887)",
+"mpls(ttl=0)","arp(dst_ip='192.168.20.20',dst_mac='22:22:22:22:22:22', opcode=1, src_ip='192.168.10.10',src_mac='12:11:11:11:11:11')","str('\\x00' * (60 - 42))"]}]}]}
+'''
 
 
 class TestsAPI(app_manager.RyuApp):

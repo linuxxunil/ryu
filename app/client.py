@@ -259,7 +259,7 @@ class TopologyClientV1_0(RyuClientBase):
     # /topology/switches/{dpid}
     # /topology/links
     # /topology/links/{dpid}
-    _path_switches = 'topology/switches'
+    _path_switches = 'topology/ys_switches'
     _path_links = 'topology/links'
 
     def __init__(self, address):
