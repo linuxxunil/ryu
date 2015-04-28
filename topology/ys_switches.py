@@ -371,6 +371,8 @@ class LinkState(dict):
         del self[link]
         del self._map[link.src]
 
+
+
     def rev_link_set_timestamp(self, rev_link, timestamp):
         # rev_link may or may not in LinkSet
         if rev_link in self:
@@ -483,7 +485,9 @@ class Switches(app_manager.RyuApp):
     LLDP_SEND_GUARD = .05
     LLDP_SEND_PERIOD_PER_PORT = 5
     TIMEOUT_CHECK_PERIOD = 5.
-    LINK_TIMEOUT = TIMEOUT_CHECK_PERIOD * 2
+    # by jesse
+    #LINK_TIMEOUT = TIMEOUT_CHECK_PERIOD * 2
+    LINK_TIMEOUT = LLDP_SEND_PERIOD_PER_PORT * 10
     LINK_LLDP_DROP = 5
 
     def __init__(self, *args, **kwargs):
@@ -564,6 +568,15 @@ class Switches(app_manager.RyuApp):
             rev_link = Link(dst, rev_link_dst)
             self.send_event_to_observers(event.EventLinkDelete(rev_link))
         self.ports.move_front(dst)
+
+    # by jesse
+    def _clink_down(self, port):
+        # by jesse
+        for link in self.clinks.keys():
+            key = link.src
+            if key == port:
+                self.clinks.link_down(link)
+
 
     @set_ev_cls(ofp_event.EventOFPStateChange,
                 [MAIN_DISPATCHER, DEAD_DISPATCHER])
@@ -650,6 +663,8 @@ class Switches(app_manager.RyuApp):
                 if not port.is_reserved():
                     self.ports.del_port(port)
                     self._link_down(port)
+                    # by jesse
+                    self._clink_down(port)
             self.lldp_event.set()
 
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
@@ -690,6 +705,8 @@ class Switches(app_manager.RyuApp):
             if port and not port.is_reserved():
                 self.ports.del_port(port)
                 self._link_down(port)
+                # by jesse
+                self._clink_down(port)
                 self.lldp_event.set()
 
         else:
@@ -708,6 +725,8 @@ class Switches(app_manager.RyuApp):
             if port and not port.is_reserved():
                 if self.ports.set_down(port):
                     self._link_down(port)
+                    # by jesse
+                    self._clink_down(port)
                 self.lldp_event.set()
 
     @staticmethod
@@ -765,17 +784,13 @@ class Switches(app_manager.RyuApp):
                 pass
 
             src_port = self.clinks.get_peer(dst_port)
-
             if src_port and src_port != dst_port:
                 self.clinks.update_link(dst_port, src_port)
             else :
-                pass
                 src_port = YsPort(src_hw_addr, src_dpid, src_port_no)
                 self.clinks.update_link(dst_port, src_port)
             
             self.lldp_event.set()
-
-
             return
         elif src.dpid == dst_dpid:
             return
@@ -891,7 +906,7 @@ class Switches(app_manager.RyuApp):
             now = time.time()
             deleted = []
             cdeleted = []
-
+ 
             # by jesse
             for (link, timestamp) in self.clinks.items():
                 if timestamp + self.LINK_TIMEOUT < now:
@@ -910,8 +925,9 @@ class Switches(app_manager.RyuApp):
                     if src in self.ports:
                         port_data = self.ports.get_port(src)
                         # LOG.debug('port_data %s', port_data)
-                        if port_data.lldp_dropped() > self.LINK_LLDP_DROP:
-                            deleted.append(link)
+                        # by jesse 
+                        #if port_data.lldp_dropped() > self.LINK_LLDP_DROP:
+                        deleted.append(link)
 
             for link in deleted:
                 self.links.link_down(link)
