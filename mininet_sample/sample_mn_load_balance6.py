@@ -12,20 +12,20 @@ def myNet():
     net = Mininet( topo=None, build=False)
 
     # Create nodes
-    h1 = net.addHost( 'h1', mac='01:00:00:00:01:00', ip='192.168.1.10/24', gw='192.168.1.1' )
-    h2 = net.addHost( 'h2', mac='01:00:00:00:02:00', ip='192.168.3.10/24' )
-    h3 = net.addHost( 'h3', mac='01:00:00:00:03:00', ip='192.168.2.10/24' )
-    h4 = net.addHost( 'h4', mac='01:00:00:00:04:00', ip='192.168.2.20/24' )
+    h1 = net.addHost( 'h1', mac='00:00:00:00:01:00', ip='192.168.1.10/24' )
+    h2 = net.addHost( 'h2', mac='00:00:00:00:02:00', ip='192.168.1.11/24' )
+    h3 = net.addHost( 'h3', mac='00:00:00:00:03:00', ip='192.168.2.10/24' )
+    h4 = net.addHost( 'h4', mac='00:00:00:00:04:00', ip='192.168.2.11/24' )
 
     # Create switches
-    s1 = net.addSwitch( 's1', listenPort=6634, mac='00:00:00:00:00:01' )
-    s2 = net.addSwitch( 's2', listenPort=6634, mac='00:00:00:00:00:02' )
+    s1 = net.addSwitch( 's1', listenPort=6644, mac='02:00:00:00:00:01' )
+    s2 = net.addSwitch( 's2', listenPort=6634, mac='02:00:00:00:00:02' )
 
     print "*** Creating links"
     net.addLink(h1, s1 )
-    net.addLink(s1, s2 )
-    net.addLink(h2, s2 )   
-    net.addLink(s1, h3 )   
+    net.addLink(h2, s1 )
+    net.addLink(s2, s1 )   
+    net.addLink(s2, h3 )   
     net.addLink(s2, h4 )   
 
     # Add Controllers
@@ -38,9 +38,11 @@ def myNet():
     s2.start([c0])
 
     h1.cmd('route add default gw 192.168.1.1')
-    h2.cmd('route add default gw 192.168.3.1')
+    h2.cmd('route add default gw 192.168.1.1')
     h3.cmd('route add default gw 192.168.2.1')
-    h4.cmd('route add default gw 192.168.2.254')
+    h3.cmd('python echo_server.py &')
+    h4.cmd('python echo_server.py &')
+    h4.cmd('route add default gw 192.168.2.1')
     s1.cmdPrint('ovs-vsctl set Bridge s1 protocols=OpenFlow13')
     s2.cmdPrint('ovs-vsctl set Bridge s1 protocols=OpenFlow13')
 

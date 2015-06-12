@@ -1,0 +1,70 @@
+{	
+	"version": "1.0",
+	"enable" : "true",
+	"controller": "http://ubuntu:8080",
+	"dpid": "0000000000000002",
+	"mode" : 2,
+	"actual_profile": [
+		{
+			"server_name": "server 1",
+			"interfaces": [
+				{"sw_port": 2, "mac": "00:00:00:00:03:00", "ip": ["192.168.2.10"]}
+			]
+		},
+		{
+			"server_name": "server 2",
+			"interfaces" : [
+				{"sw_port": 3, "mac": "00:00:00:00:04:00", "ip": ["192.168.2.11"]}
+			]
+		}
+	],
+	"virtual_profile": [
+		{
+			"enable": "true",
+			"vserver_name": "server1",
+			"vserver_ip": "192.168.2.254/24",
+			"vserver_gw": "192.168.2.1",
+			"default_server_ip": "192.168.2.10",
+			"turn_to_services": [
+				{
+					"service": [80], 
+					"dst_servers": [
+						{"priority":1, "ip":"192.168.2.10", "ipproto":"tcp"},
+						{"priority":2, "ip":"192.168.2.10", "ipproto":"udp"},
+						{"priority":3, "ip":"192.168.2.11", "ipproto":"tcp"},
+						{"priority":4, "ip":"192.168.2.11", "ipproto":"udp"}
+					]
+				},
+				{
+					"service": [20,21], 
+					"dst_servers": [
+						{"priority":1, "ip":"192.168.2.10", "ipproto":"udp"},
+						{"priority":2, "ip":"192.168.2.11", "ipproto":"udp"}
+					]
+				}
+			]
+		},
+		{
+			"enable": "false",
+			"vserver_name": "server2",
+			"vserver_ip": "192.168.2.253",
+			"default_server_ip": "192.168.2.10",
+			"turn_to_services": [
+				{
+					"service": [80], 
+					"dst_servers": [
+						{"priority":1, "ip":"192.168.2.10", "ipproto":"tcp|udp"},
+						{"priority":2, "ip":"192.168.2.11", "ipproto":"tcp|udp"}
+					]
+				},
+				{
+					"service": [20,21],
+					"dst_servers": [
+						{"priority":1, "ip":"192.168.2.10", "ipproto":"tcp|udp"},
+						{"priority":2, "ip":"192.168.2.11", "ipproto":"tcp|udp"}
+					]
+				}
+			]
+		}
+	]
+}
