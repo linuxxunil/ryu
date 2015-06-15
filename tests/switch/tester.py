@@ -24,7 +24,6 @@ import signal
 import sys
 import time
 import traceback
-import threading
 from random import randint
 
 from ryu import cfg
@@ -53,8 +52,6 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.ofproto import ofproto_v1_3_parser
 from ryu.ofproto import ofproto_v1_4
 from ryu.ofproto import ofproto_v1_5
-from ryu.tests.switch import ys_event as rest_event
-
 
 
 """ Required test network:
@@ -153,13 +150,6 @@ STATE_GROUP_EXIST_CHK = 20
 
 STATE_DISCONNECTED = 99
 
-
-# Handle Status
-START_RUNNING = 2
-START_OK = 1
-START_FINISH = 0
-START_ERROR = -1
-
 # Test result.
 TEST_OK = 'OK'
 TEST_ERROR = 'ERROR'
@@ -168,8 +158,6 @@ TEST_FILE_ERROR = '%(file)s : Test file format error (%(detail)s)'
 NO_TEST_FILE = 'Test file (*.json) is not found.'
 INVALID_PATH = '%(path)s : No such file or directory.'
 
-# by jesse :
-TEST_ITEM_ERROR = 'Test content format error (%(detail)s)'
 # Test result details.
 FAILURE = 0
 ERROR = 1
@@ -274,34 +262,16 @@ class TestError(TestMessageBase):
         super(TestError, self).__init__(state, ERROR, **argv)
 
 
-
 class OfTester(app_manager.RyuApp):
     """ OpenFlow Switch Tester. """
 
     tester_ver = None
     target_ver = None
 
-    def __init__(self, *args, **kwargs):
-        super(OfTester, self).__init__(*args, **kwargs)
-        self.name = 'oftester'
-        
-        # by jesse
+    def __init__(self):
+        super(OfTester, self).__init__()
         self._set_logger()
-        self.target_dpid = None
-        self.target_send_port_1 = None
-        self.target_send_port_2 = None
-        self.target_recv_port = None
-        self.tester_dpid = None
-        self.tester_send_port = None
-        self.tester_recv_port_1 = None
-        self.tester_recv_port_2 = None
-        target_opt = None
-        tester_opt = None
-        target_sw = None
-        tester_sw = None
-        
-        '''
-        self._set_logger()
+
         self.target_dpid = self._convert_dpid(CONF['test-switch']['target'])
         self.target_send_port_1 = CONF['test-switch']['target_send_port_1']
         self.target_send_port_2 = CONF['test-switch']['target_send_port_2']
@@ -315,24 +285,37 @@ class OfTester(app_manager.RyuApp):
         self.logger.info('tester_dpid=%s',
                          dpid_lib.dpid_to_str(self.tester_dpid))
 
+        def __get_version(opt):
+            vers = {
+                'openflow13': ofproto_v1_3.OFP_VERSION,
+                'openflow14': ofproto_v1_4.OFP_VERSION,
+                'openflow15': ofproto_v1_5.OFP_VERSION
+            }
+            ver = vers.get(opt.lower())
+            if ver is None:
+                self.logger.error(
+                    '%s is not supported. '
+                    'Supported versions are openflow13, '
+                    'openflow14 and openflow15.',
+                    opt)
+                self._test_end()
+            return ver
+
         target_opt = CONF['test-switch']['target_version']
         self.logger.info('target ofp version=%s', target_opt)
-        OfTester.target_ver = self._get_version(target_opt)
+        OfTester.target_ver = __get_version(target_opt)
         tester_opt = CONF['test-switch']['tester_version']
         self.logger.info('tester ofp version=%s', tester_opt)
-        OfTester.tester_ver = self._get_version(tester_opt)
+        OfTester.tester_ver = __get_version(tester_opt)
         # set app_supported_versions later.
         ofproto_protocol.set_app_supported_versions(
             [OfTester.target_ver, OfTester.tester_ver])
 
-        self.test_dir = CONF['test-switch']['dir']
-        self.test_dir = "/usr/local/lib/python2.7/dist-packages/ryu/tests/switch/of10"
-        self.logger.info('Test files directory = %s', self.test_dir)
+        test_dir = CONF['test-switch']['dir']
+        self.logger.info('Test files directory = %s', test_dir)
 
         self.target_sw = OpenFlowSw(DummyDatapath(), self.logger)
         self.tester_sw = OpenFlowSw(DummyDatapath(), self.logger)
-        '''
-        self.evnet_ofp_state_change = None
         self.state = STATE_INIT_FLOW
         self.sw_waiter = None
         self.waiter = None
@@ -341,33 +324,8 @@ class OfTester(app_manager.RyuApp):
         self.ingress_event = None
         self.ingress_threads = []
         self.thread_msg = None
-        self.test_thread = None
-             #hub.spawn(self._test_sequential_execute, test_dir)
-
-        # by jesse
-        self.connected_list = {}
-        self.result_list = []
-        self.test_thread_state = "idle"
-        self.test_item = None
-
-               
-      
-
-    def _get_version(self, opt):
-        vers = {
-            'openflow13': ofproto_v1_3.OFP_VERSION,
-            'openflow14': ofproto_v1_4.OFP_VERSION,
-            'openflow15': ofproto_v1_5.OFP_VERSION
-        }
-        ver = vers.get(opt.lower())
-        if ver is None:
-            self.logger.error(
-                '%s is not supported. '
-                'Supported versions are openflow13, '
-                'openflow14 and openflow15.',
-                opt)
-            self._test_end()
-        return ver
+        self.test_thread = hub.spawn(
+            self._test_sequential_execute, test_dir)
 
     def _set_logger(self):
         self.logger.propagate = False
@@ -398,17 +356,10 @@ class OfTester(app_manager.RyuApp):
     def dispacher_change(self, ev):
         assert ev.datapath is not None
         if ev.state == handler.MAIN_DISPATCHER:
-            self.evnet_ofp_state_change = ev.state
-            #self._register_sw(ev.datapath)
-            if ev.datapath.id is not None:
-              self.connected_list[ev.datapath.id] = ev.datapath
+            self._register_sw(ev.datapath)
         elif ev.state == handler.DEAD_DISPATCHER:
-            self.evnet_ofp_state_change = ev.state
-            #self._unregister_sw(ev.datapath)
+            self._unregister_sw(ev.datapath)
 
-            if ev.datapath.id is not None:
-              del self.connected_list[ev.datapath.id]
-            
     def _register_sw(self, dp):
         vers = {
             ofproto_v1_3.OFP_VERSION: 'openflow13',
@@ -458,7 +409,6 @@ class OfTester(app_manager.RyuApp):
 
     def _test_sequential_execute(self, test_dir):
         """ Execute OpenFlow Switch test. """
-
         # Parse test pattern from test files.
         tests = TestPatterns(test_dir, self.logger)
         if not tests:
@@ -475,7 +425,6 @@ class OfTester(app_manager.RyuApp):
                 test_report.setdefault(result, [])
                 test_report[result].extend(descriptions)
         self._test_end(msg='---  Test end  ---', report=test_report)
-        
 
     def _test_file_execute(self, testfile):
         report = {}
@@ -496,9 +445,8 @@ class OfTester(app_manager.RyuApp):
 
         if description:
             self.logger.info('%s', description)
-            self.test_item = description
         self.thread_msg = None
-        
+
         # Test execute.
         try:
             # Initialize.
@@ -589,19 +537,11 @@ class OfTester(app_manager.RyuApp):
 
         # Output test result.
         self.logger.info('    %-100s %s', test.description, result[0])
-       
         if 1 < len(result):
             self.logger.info('        %s', result[1])
             if (result[1] == RYU_INTERNAL_ERROR
                     or result == 'An unknown exception'):
                 self.logger.error(traceback.format_exc())
-
-        # by jesse
-        obj = {}
-        obj["description"] = test.description
-        obj["status"] = result[0]
-        obj["msg"] = result[1] if len(result) > 1 else ""
-        self.result_list.append(obj)
 
         hub.sleep(0)
         return result_type
@@ -612,8 +552,8 @@ class OfTester(app_manager.RyuApp):
             self.logger.info(msg)
         if report:
             self._output_test_report(report)
-        #pid = os.getpid()
-        #os.kill(pid, signal.SIGTERM)
+        pid = os.getpid()
+        os.kill(pid, signal.SIGTERM)
 
     def _output_test_report(self, report):
         self.logger.info('%s--- Test report ---', os.linesep)
@@ -1187,10 +1127,6 @@ class OfTester(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, handler.MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
-        datapath = ev.msg.datapath
-        if datapath.id != self.target_dpid or datapath.id != self.tester_dpid:
-            return
-
         state_list = [STATE_FLOW_MATCH_CHK]
         if self.state in state_list:
             if self.waiter:
@@ -1208,115 +1144,6 @@ class OfTester(app_manager.RyuApp):
                 self.waiter.set()
                 hub.sleep(0)
 
-    
-
-    # by jesse
-    @set_ev_cls(rest_event.EventTestItemRequest)
-    def test_request_handler(self, req):
-        self.start_thread(req)
-
-    def synchronized(func):
-        func.__lock__ = threading.Lock()
-        def synced_func(*args, **kws):
-            with func.__lock__:
-              return func(*args, **kws)
-        return synced_func  
-
-    @synchronized
-    def start_thread(self, req):
-        status = START_OK
-        description = "START_OK"
-        if  self.test_thread == None:
-            self.logger.info('--- Test start ---')
-            self._init(req)
-            self.test_thread = hub.spawn(
-                  self._test_item_execute, req)
-
-            if self.test_thread == None:
-              status = START_ERROR
-              description = "START_ERROR"
-
-            else :
-              stauts = START_OK
-              description = "START_OK"
-        else :
-            status = START_RUNNING
-            description = "START_RUNNING"
-        
-        rep = rest_event.EventTestItemReply(req.src, status, description,
-                              dpid_lib.dpid_to_str(self.target_dpid))
-        self.reply_to_request(req, rep)
-
-
-    def _init(self, req) :
-        self.evnet_ofp_state_change = None
-        self.state = STATE_INIT_FLOW
-        self.sw_waiter = None
-        self.waiter = None
-        self.send_msg_xids = []
-        self.rcv_msgs = []
-        self.ingress_event = None
-        self.ingress_threads = []
-        self.thread_msg = None
-        self.result_list = []
-        self.test_item = None
-  
-        self.target_dpid = req.target_dpid
-        self.target_recv_port =  req.target_recv_port
-        self.target_send_port_1 = req.target_send_port_1
-        self.target_send_port_2 = req.target_send_port_2
-            
-        self.tester_dpid = req.tester_dpid
-        self.tester_send_port = req.tester_send_port
-        self.tester_recv_port_1 = req.tester_recv_port1
-        self.tester_recv_port_2 = req.tester_recv_port2
-        self.logger.info('target_dpid=%s',
-                        dpid_lib.dpid_to_str(self.target_dpid))
-
-        self.logger.info('tester_dpid=%s',
-                        dpid_lib.dpid_to_str(self.tester_dpid))
-
-        target_opt = req.target_version
-        self.logger.info('target ofp version=%s', target_opt)
-        OfTester.target_ver = self._get_version(target_opt)
-        tester_opt = req.tester_version
-        self.logger.info('tester ofp version=%s', tester_opt)
-        OfTester.tester_ver = self._get_version(tester_opt)
-          
-        # set app_supported_versions later.
-        ofproto_protocol.set_app_supported_versions(
-                  [OfTester.target_ver, OfTester.tester_ver])
-
-        self.target_sw = OpenFlowSw(DummyDatapath(), self.logger)
-        self.tester_sw = OpenFlowSw(DummyDatapath(), self.logger)
-          
-        for key in self.connected_list.keys() :
-            dp = self.connected_list[key]
-            self._unregister_sw(dp)
-            self._register_sw(dp)
-
-    def _test_item_execute(self, req) :
-      self.test_thread_state = "running"
-      json_list = TestItem(req.test_item, self.logger)
-      self._test_file_execute(json_list)
-      self.test_thread_state = "idle"
-      self._test_end(msg='---  Test end  ---', report=None)
-
-    # by jesse
-    @set_ev_cls(rest_event.EventTestItemResultRequest)
-    def get_request_handler(self, req):
-        rep = rest_event.EventTestItemResultReply(req.src, self.result_list, 
-                              self.target_dpid,self.test_thread_state, self.test_item)
-        self.reply_to_request(req, rep)
-
-    # by jesse
-    @set_ev_cls(rest_event.EventTestItemStopRequest)
-    def stop_request_handler(self, req):
-        self.close()
-        self.test_thread_state = "idle"
-        self._test_end(msg='---  Test stop  ---', report=None)
-        rep = rest_event.EventTestItemStopReply(req.src, self.test_thread_state)
-        self.reply_to_request(req, rep)
 
 class OpenFlowSw(object):
 
@@ -1336,7 +1163,6 @@ class OpenFlowSw(object):
 
     def add_flow(self, in_port=None, out_port=None):
         """ Add flow. """
-
         ofp = self.dp.ofproto
         parser = self.dp.ofproto_parser
 
@@ -1353,7 +1179,6 @@ class OpenFlowSw(object):
 
     def del_flows(self, cookie=0):
         """ Delete all flow except default flow. """
-        
         ofp = self.dp.ofproto
         parser = self.dp.ofproto_parser
         cookie_mask = 0
@@ -1370,7 +1195,6 @@ class OpenFlowSw(object):
 
     def del_meters(self):
         """ Delete all meter entries. """
-        
         ofp = self.dp.ofproto
         parser = self.dp.ofproto_parser
         mod = parser.OFPMeterMod(self.dp,
@@ -1465,52 +1289,6 @@ class TestPatterns(dict):
                 test = TestFile(path, self.logger)
                 self[test.description] = test
 
-# by jesse
-class TestItem(stringify.StringifyMixin):
-    """Test File object include Test objects."""
-    def __init__(self, item, logger):
-        super(TestItem, self).__init__()
-        self.logger = logger
-        self.description = None
-        self.tests = []
-        self._get_tests(item)
-
-    def _normalize_test_json(self, val):
-        def __replace_port_name(k, v):
-            for port_name in [
-                'target_recv_port', 'target_send_port_1',
-                'target_send_port_2', 'tester_send_port',
-                    'tester_recv_port_1', 'tester_recv_port_2']:
-                if v[k] == port_name:
-                    v[k] = CONF['test-switch'][port_name]
-        if isinstance(val, dict):
-            for k, v in val.iteritems():
-                if k == "OFPActionOutput":
-                    if 'port' in v:
-                        __replace_port_name("port", v)
-                elif k == "OXMTlv":
-                    if v.get("field", "") == "in_port":
-                        __replace_port_name("value", v)
-                self._normalize_test_json(v)
-        elif isinstance(val, list):
-            for v in val:
-                self._normalize_test_json(v)
-
-    def _get_tests(self, item):
-            try:
-                json_list = item
-                for test_json in json_list:
-                    if isinstance(test_json, unicode):
-                        self.description = test_json
-                    else:
-                        self._normalize_test_json(test_json)
-                      
-                        self.tests.append(Test(test_json))
-            except (ValueError, TypeError) as e:
-                result = (TEST_ITEM_ERROR %
-                          {'detail': e.message})
-                self.logger.warning(result)
-                self.logger.warning(buf)
 
 class TestFile(stringify.StringifyMixin):
     """Test File object include Test objects."""
@@ -1737,3 +1515,4 @@ class DummyDatapath(object):
 
     def send_msg(self, _):
         pass
+
