@@ -1188,7 +1188,7 @@ class OfTester(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPacketIn, handler.MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
         datapath = ev.msg.datapath
-        if datapath.id != self.target_dpid or datapath.id != self.tester_dpid:
+        if datapath.id != self.target_dpid and datapath.id != self.tester_dpid:
             return
 
         state_list = [STATE_FLOW_MATCH_CHK]
