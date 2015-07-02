@@ -1,17 +1,16 @@
 import logging
 import http
-import profile
 import event
 import json
 import ast
 import dpid
 import signal
 import os
+from profile import Profile
+from profile import ProfileException
 
 logging.basicConfig(level=logging.INFO)
 LOG = logging.getLogger(__name__)
-
-
 
 
 class Base(object):
@@ -23,36 +22,50 @@ class Base(object):
 		self.LOADBALANCE_VSERVER_PATH = '/loadbalance/vserver'
 		self.LOADBALANCE_ASERVER_PATH = '/loadbalance/aserver'
 		
-
 	def _exe_http_aserver(self, controller, content):
 		aserver_url = controller + self.LOADBALANCE_ASERVER_PATH
 		_content = json.dumps(content)
-		self.http.post(aserver_url, _content)
+		return self.http.post(aserver_url, _content)
 
 	def _exe_http_vserver(self, controller, content):
 		url = controller + self.LOADBALANCE_VSERVER_PATH
 		_content = json.dumps(content)
-		self.http.post(url, _content)
+		return self.http.post(url, _content)
 
-	def _exe_http_virtual_ip(self, controller, dpid, content):
-		url = controller + self.ROUTER + '/' + dpid
-		_content = json.dumps(content)
-		self.http.post(url, _content)
-		self.logging.debug("set vserver = \n    %s", content)
-
-	def _exe_http_clear_switch(self, controller, dpid):
-		url = controller + self.ROUTER + '/' + dpid
+	def _exe_http_clear_router_gw(self, controller, _dpid):
+		hex_dpid = (hex(int(_dpid))[2:]).zfill(16)
+		url = controller + self.ROUTER + '/' + hex_dpid
 		_content = json.dumps({"route_id": "all"})
-		self.http.delete(url, _content)
+		return self.http.delete(url, _content)
+
+	def _exe_http_clear_router_ip(self, controller, _dpid):
+		hex_dpid = (hex(int(_dpid))[2:]).zfill(16)
+		url = controller + self.ROUTER + '/' + hex_dpid
 		_content = json.dumps({"address_id": "all"})
-		self.http.delete(url, _content)
+		return self.http.delete(url, _content)
+
 
 	def _set_aprofile_to_controller(self, controller, local_aprofiles ):
 		requests = []
 		for l in local_aprofiles:
-			self._exe_http_aserver(controller, l)	
+			status, content = self._exe_http_aserver(controller, l)	
+			if status != 200:
+				self.logging.info('aprofile set failure')
+				return False
+		self.logging.debug('aprofile set = %s' % (local_aprofiles))
+		return True
+
 
 	def _set_vprofile_to_controller(self, controller, local_vprofiles ):
+		status, content = self._exe_http_vserver(controller, local_vprofiles)	
+		if status != 200:
+			self.logging.info('vprofile set failure')
+			return False
+		self.logging.debug('vprofile set = %s' % local_vprofiles)
+		return True
+		
+
+	def _set_vprofile_to_controller_by_priority(self, controller, local_vprofiles ):
 		remote_vprofile = self._get_remote_vprofile(controller)
 		requests = []
 
@@ -74,22 +87,47 @@ class Base(object):
 					"default_server_ip": l["default_server_ip"],
 					"vserver_ip" : l["vserver_ip"],
 					"turn_to_services" : services}
-			self._exe_http_vserver(controller, req)
+			status, content = self._exe_http_vserver(controller, req)
+			if status != 200:
+				self.logging.info('vprofile set failure')
+				return False
+		return True
 	
-	def _set_virtual_ip_to_switch(self, controller, dpid, ip):
-		url = controller + self.ROUTER + '/' + dpid
+	def _set_virtual_ip_to_switch(self, controller, _dpid, ip):
+		hex_dpid = (hex(int(_dpid))[2:]).zfill(16)
+		url = controller + self.ROUTER + '/' + hex_dpid
 		_content = json.dumps({"address": ip})
-		self.http.post(url, _content)
-		self.logging.info('virtual_ip=%s' % ip)
+		status, content = self.http.post(url, _content)
+		if status != 200 :
+			self.logging.info('virtual_ip set failure')
+			return False
+		self.logging.info("virtual_ip = %s" % ip)
+		return True
 
-	def _set_virtual_gw_to_switch(self, controller, dpid, ip):
-		url = controller + self.ROUTER + '/' + dpid
+	def _set_virtual_gw_to_switch(self, controller, _dpid, ip):
+		hex_dpid = (hex(int(_dpid))[2:]).zfill(16)
+		url = controller + self.ROUTER + '/' + hex_dpid
 		_content = json.dumps({"gateway": ip})
 		status, content = self.http.post(url, _content)
-		self.logging.info('virtual_gw=%s' % ip)
+		if status != 200 :
+			self.logging.info('virtual_gw set failure')
+			return False
+		self.logging.info("virtual_gw = %s" % ip)
+		return True
 
 	def _clear_switch(self, controller, dpid):
-		self._exe_http_clear_switch(controller, dpid)		
+		status, content = self._exe_http_clear_router_gw(controller, dpid)
+		if status != 200: 
+			self.logging.info('router gw clear failure')
+			return False
+		self.logging.info('router gw clear success')
+		status, content = self._exe_http_clear_router_ip(controller, dpid)
+		if status != 200:
+			self.logging.info('router ip clear failure') 
+			return False
+		self.logging.info('router ip clear success')
+		return True		
+
 
 	def _get_remote_vprofile(self, controller):
 		url = controller + self.LOADBALANCE_VSERVER_PATH + '/all'
@@ -181,9 +219,6 @@ class RandomMode (Base) :
 		# clear switch setting
 		self._clear_switch(self.local_controller, self.local_dpid)
 
-		# set actual server to controller
-		self._set_aprofile_to_controller(self.local_controller, self.local_aprofiles)
-		
 		# set virtual server to controller
 		lists = []
 		for vp in self.local_vprofiles:
@@ -194,8 +229,11 @@ class RandomMode (Base) :
 				self._set_virtual_gw_to_switch(self.local_controller, self.local_dpid, vserver_gw)
 				lists.append(vp)
 
+		# set actual server to controller
+		self._set_aprofile_to_controller(self.local_controller, self.local_aprofiles)
+
 		while self.is_active :
-			self._set_vprofile_to_controller(self.local_controller, lists)
+			self._set_vprofile_to_controller_by_priority(self.local_controller, lists)
 			event.sleep(5)
 
 		self.exit = True
@@ -232,7 +270,7 @@ class StatisticsMode (Base) :
 		if status == 200 : 
 			ujson = json.loads(rest_content)
 			result = ast.literal_eval(json.dumps(ujson)) if ujson else []
-			return result[str(dpid.str_to_dpid(_dpid))] 
+			return result[str(_dpid)] 
 		else : return []
 
 	def __count_session_by_aserver(self, flowentrys, service):		
@@ -277,7 +315,6 @@ class StatisticsMode (Base) :
 	def _count_session(self, controller, dpid, actual_profile, vprofile):
 		flowentrys = self._get_all_rest_flow_entrys(controller, dpid)
 		count = self._count_rest_flow_entry(flowentrys)
-
 	
 		vserver_ip = vprofile["vserver_ip"].split("/")[0]
 		turn_to_services = vprofile["turn_to_services"]
@@ -331,15 +368,14 @@ class StatisticsMode (Base) :
 					services.append(service)
 
 		request["turn_to_services"] = services
-		self._exe_http_vserver(controller, request)
+		self._set_vprofile_to_controller(controller, request)
 		self.logging.debug('\n%s\n' % request)
 
 	def _loop(self):
 		# clear switch setting
-		#self._clear_switch(self.local_controller, self.local_dpid)
-		# set actual server to controller
-		self._set_aprofile_to_controller(self.local_controller, self.local_aprofiles)
+		self._clear_switch(self.local_controller, self.local_dpid)
 		
+		# set virtual server to controller
 		vprofile = []
 		for vp in self.local_vprofiles:
 			if vp["enable"] == "true":
@@ -350,6 +386,9 @@ class StatisticsMode (Base) :
 				vprofile.append(vp)
 
 		# set actual server to controller
+		self._set_aprofile_to_controller(self.local_controller, self.local_aprofiles)
+
+		
 		while self.is_active :
 			for vp in vprofile:
 				self._count_session(
@@ -381,7 +420,7 @@ if __name__ == '__main__':
 			is_nochange = True	
 				
 			LOG.info('Loading profile.json')			
-			prof = profile.Profile("profile.json")
+			prof = Profile("profile.json")
 			mode = prof.get_mode()
 			
 			if mode == 1:
@@ -397,9 +436,13 @@ if __name__ == '__main__':
 
 			while is_active:
 				event.sleep(1)
-				
+
+	except ProfileException as e:
+		LOG.info("Profile format error.(%s)" % e)
+
 	except Exception as e:
-		pass
+		LOG.info("Unknow Exception.(%s)" % e)
+
 	finally:
 		for t in threads:
 			t.stop()

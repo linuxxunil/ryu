@@ -246,8 +246,6 @@ class CommandFailure(RyuException):
 # cls  : 
 # desc : 
 # auth : jesse  
- 
-
 class ActualServer(object):
     def __init__(self, name):
         super(ActualServer, self).__init__()
@@ -600,8 +598,6 @@ class RouterController(ControllerBase):
     def __init__(self, req, link, data, **config):
         super(RouterController, self).__init__(req, link, data, **config)
         self.waiters = data['waiters']
-        # jesse
-        #self.vserver_profile = VServerProfile()
 
     @classmethod
     def set_logger(cls, logger):
@@ -1344,7 +1340,6 @@ class VlanRouter(object):
         req_sip = ip.src
         req_dip = ip.dst
 
-
         if ip.proto == inet.IPPROTO_TCP:
             _tcp = pkt.get_protocol(tcp.tcp)
             req_proto = inet.IPPROTO_TCP
@@ -1360,12 +1355,6 @@ class VlanRouter(object):
         else :
             return
 
-        #gateways = self.routing_tbl.get_gateways()
-        #if len(gateways) == 1 :
-        #    sw_gateway_ip = gateways[0]
-        #    route = self.routing_tbl.get_data(dst_ip=sw_gateway_ip)
-        #    sw_gateway_mac = route.gateway_mac
-        
         vservers = _vserver_profile.get_all_server()
         aservers = _aserver_profile.get_all_server()
         for vserver in vservers:
@@ -1401,6 +1390,10 @@ class VlanRouter(object):
                             srv_ip = service_ip
                             out_port = aserver.get_sw_port(srv_mac)
                             
+                            if in_port == out_port:
+				                out_port = self.ofctl.dp.ofproto.OFPP_IN_PORT
+				                in_port = out_port
+ 
                             if virtual_ipproto == inet.IPPROTO_TCP:
                                 if service_proto.find('tcp') != -1:
                                     for service_port in port["service"]:

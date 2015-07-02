@@ -69,7 +69,7 @@ class HttpClient(object):
 		status = ""
 		content = ""
 		try :
-			rep = urllib2.urlopen(url)
+			rep = urllib2.urlopen(url, timeout=5)
 			status = rep.getcode()
 			content = rep.read()
 			rep.close()
@@ -85,11 +85,14 @@ class HttpClient(object):
 			req = urllib2.Request(url=url,data=data)
 			req.add_header('content-type', 'application/json')
 			req.add_header('accept', '*/*')
-			rep = urllib2.urlopen(req)
+			rep = urllib2.urlopen(req, timeout=5)
 			status = rep.getcode()
 			content = rep.read()
 			rep.close()
 		except urllib2.HTTPError as e:
+			status = e.code
+			content = e.reason
+		except urllib2.URLError, e:
 			status = e.code
 			content = e.reason
 		return status, content
@@ -102,7 +105,7 @@ class HttpClient(object):
 			req.add_header('content-type', 'application/json')
 			req.add_header('accept', '*/*')
 			req.get_method = lambda : 'DELETE'
-			rep = urllib2.urlopen(req)
+			rep = urllib2.urlopen(req, timeout=5)
 			status = rep.getcode()
 			content = rep.read()
 			rep.close()

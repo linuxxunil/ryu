@@ -1,11 +1,31 @@
 import json
 import ast
-    	
+
+class ProfileException(Exception):
+    message = 'An unknown exception'
+
+    def __init__(self, msg=None, **kwargs):
+        self.kwargs = kwargs
+        if msg is None:
+            msg = self.message
+
+        try:
+            msg = msg % kwargs
+        except Exception:
+            msg = self.message
+
+        super(ProfileException, self).__init__(msg)
+
+
 class Profile(object):
     def __init__(self, path):
         with open(path) as json_file:
-            udata = json.load(json_file)
-            self.data = ast.literal_eval(json.dumps(udata))
+		try :
+            		udata = json.load(json_file)
+            		self.data = ast.literal_eval(json.dumps(udata))
+		except Exception as err:
+			raise ProfileException(str(err))
+
 
     def __str__(self):
         return json.dumps(self.data) \

@@ -2,7 +2,7 @@
 	"version": "1.0",
 	"enable" : "true",
 	"controller": "http://ubuntu:8080",
-	"dpid": "0000000000000002",
+	"dpid": "2",
 	"mode" : 2,
 	"actual_profile": [
 		{
@@ -30,9 +30,7 @@
 					"service": [80], 
 					"dst_servers": [
 						{"priority":1, "ip":"192.168.2.10", "ipproto":"tcp"},
-						{"priority":2, "ip":"192.168.2.10", "ipproto":"udp"},
-						{"priority":3, "ip":"192.168.2.11", "ipproto":"tcp"},
-						{"priority":4, "ip":"192.168.2.11", "ipproto":"udp"}
+						{"priority":2, "ip":"192.168.2.11", "ipproto":"tcp"}
 					]
 				},
 				{
