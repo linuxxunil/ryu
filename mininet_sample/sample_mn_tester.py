@@ -36,9 +36,10 @@ if '__main__' == __name__:
 
     s1 = net.addSwitch('s1')
     s2 = net.addSwitch('s2')
-#    s3 = net.addSwitch('s3')
+    s3 = net.addSwitch('s3')
 
     net.addLink(s1, s2)
+    net.addLink(s1, s3)
     net.addLink(s1, s2)
     net.addLink(s1, s2)
 
@@ -46,15 +47,10 @@ if '__main__' == __name__:
     c0.start()
     s1.start([c0])
     s2.start([c0])
-#    s3.start([c0])
 
     #if conf.switch in ['ovs', 'ovs13']:
     s1.cmd('ovs-vsctl set Bridge s1 protocols=OpenFlow13')
     s2.cmd('ovs-vsctl set Bridge s2 protocols=OpenFlow13')
-#    s3.cmd('ovs-vsctl set Bridge s3 protocols=OpenFlow13')
-    #elif conf.switch == 'ovs14':
-    #    s1.cmd('ovs-vsctl set Bridge s1 protocols=OpenFlow14')
-    #    s2.cmd('ovs-vsctl set Bridge s2 protocols=OpenFlow14')
 
     CLI(net)
 
