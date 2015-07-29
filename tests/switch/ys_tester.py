@@ -49,12 +49,15 @@ from ryu.lib import hub
 from ryu.lib import stringify
 from ryu.lib.packet import packet
 from ryu.ofproto import ofproto_protocol
+
 from ryu.ofproto import ofproto_v1_3
 from ryu.ofproto import ofproto_v1_3_parser
 from ryu.ofproto import ofproto_v1_4
 from ryu.ofproto import ofproto_v1_5
 from ryu.tests.switch import ys_event as rest_event
-
+from ryu.lib import ofctl_v1_0
+from ryu.lib import ofctl_v1_2
+from ryu.lib import ofctl_v1_3
 
 
 """ Required test network:
@@ -150,106 +153,177 @@ STATE_THROUGHPUT_CHK = 17
 STATE_INIT_GROUP = 18
 STATE_GROUP_INSTALL = 19
 STATE_GROUP_EXIST_CHK = 20
-
 STATE_DISCONNECTED = 99
+STATE_TESTER_FLOW_INSTALL = 21
+STATE_TARGET_FLOWS = 22
+STATE_GET_PORT_DESC = 23
 
 
-# Handle Status
-START_RUNNING = 2
-START_OK = 1
-START_FINISH = 0
-START_ERROR = -1
+STATE_STR = {
+    STATE_INIT_FLOW : "FLOW INITIALIZE",
+    STATE_FLOW_INSTALL : "FLOW INSTALL",
+    STATE_FLOW_EXIST_CHK : "FLOW EXIST CHK",
+    STATE_TARGET_PKT_COUNT : "TARGET PACKET COUNT",
+    STATE_TESTER_PKT_COUNT : "TASTER PACKET COUNT",
+    STATE_FLOW_MATCH_CHK : "FLOW MATCH CHK",
+    STATE_NO_PKTIN_REASON : "NO PACKET IN REASON",
+    STATE_GET_MATCH_COUNT : "GET MATCH COUNT",
+    STATE_SEND_BARRIER : "SEND BARRIER",
+    STATE_FLOW_UNMATCH_CHK : "FLOW UNMATCH CHECK",
+    STATE_INIT_METER : "INIT METER",
+    STATE_METER_INSTALL : "METER INSTALL",
+    STATE_METER_EXIST_CHK : "METER EXIST CHECK",
+    STATE_INIT_THROUGHPUT_FLOW : "INIT THROUGHPUT FLOW",
+    STATE_THROUGHPUT_FLOW_INSTALL : "THROUGHPUT FLOW INSTALL",
+    STATE_THROUGHPUT_FLOW_EXIST_CHK : "THROUGHPUT FLOW EXIST CHECK",
+    STATE_GET_THROUGHPUT : "GET THROUGHPUT",
+    STATE_THROUGHPUT_CHK : "THROUGHPUT CHECK",
+    STATE_INIT_GROUP : "INIT GROUP",
+    STATE_GROUP_INSTALL : "GROUP INSTALL",
+    STATE_GROUP_EXIST_CHK : "GROUP EXIST CHECK",
+    STATE_DISCONNECTED : "DISCONNECTED",
+    STATE_TARGET_FLOWS : "TARGET FLOWS",
+    STATE_GET_PORT_DESC : "GET PORT DESC"
+}
 
-# Test result.
-TEST_OK = 'OK'
-TEST_ERROR = 'ERROR'
-RYU_INTERNAL_ERROR = '- (Ryu internal error.)'
-TEST_FILE_ERROR = '%(file)s : Test file format error (%(detail)s)'
-NO_TEST_FILE = 'Test file (*.json) is not found.'
-INVALID_PATH = '%(path)s : No such file or directory.'
+# Thread state
+THREAD_STATE_READY = 0
+THREAD_STATE_START_SUCEESS = 1
+THREAD_STATE_START_FAILURE = 2
+THREAD_STATE_RUNNING = 3
+THREAD_STATE_TEST_PATTERN_ERROR = 4
+THREAD_STATE_REGISTER_DPID_ERROR = 5
+
+THREAD_STATE_STR = {
+    THREAD_STATE_READY: "Thread is ready.",
+    THREAD_STATE_START_SUCEESS: "Thread start success.",
+    THREAD_STATE_START_FAILURE: "Thread start failure.",
+    THREAD_STATE_RUNNING: "Thread is running.",
+    THREAD_STATE_TEST_PATTERN_ERROR: "Test script format is error.",
+    THREAD_STATE_REGISTER_DPID_ERROR: "DPID register error."
+}
+
+# Test
+RESULT_EXECUTE_STATE = "execute_state"
+RESULT_EXECUTE_DESC = "execute_description"
+RESULT_TARGET_DPID = "target_dpid"
+RESULT_TEST_DESC = "test_description"
+RESULT_REPORT = "report"
+RESULT_REPORT_STATUS = "status"
+RESULT_REPORT_TEST_REASON = "test_reason"
+RESULT_REPORT_TEST_ITEM = "test_item"
+RESULT_REPORT_TEST_STATE = "teste_state"
+RESULT_REPORT_BEFORE_PORT_STATE = "before_ports_state"
+RESULT_REPORT_AFTER_PORT_STATE = "after_ports_state"
+RESULT_REPORT_EXPECTED_FLOW = "expected_flow"
+RESULT_REPORT_REAL_FLOW = "real_flow"
+RESULT_REPORT_PORT_LINK_STATE = "port_link_state"
+RESULT_REPORT_SEND_PORT = "send_port"
+RESULT_REPORT_OPERATING = "operating"
+RESULT_REPORT_CHECK_SEND_PORT = "check_send_port"
+
+RESULT_OK = "OK"
+RESULT_ERROR = "ERROR"
 
 # by jesse :
 TEST_ITEM_ERROR = 'Test content format error (%(detail)s)'
+
+
+# Test port
+TESTER_SEND_PORT   = "tester_send_port"
+TESTER_RECV_PORT_1 = "tester_recv_port_1"
+TESTER_RECV_PORT_2 = "tester_recv_port_2"
+TARGET_RECV_PORT   = "target_recv_port"
+TARGET_SEND_PORT_1 = "target_send_port_1"
+TARGET_SEND_PORT_2 = "target_send_port_2"
+
 # Test result details.
 FAILURE = 0
 ERROR = 1
 TIMEOUT = 2
 RCV_ERR = 3
 
-MSG = {STATE_INIT_FLOW:
-       {TIMEOUT: 'Failed to initialize flow tables: barrier request timeout.',
-        RCV_ERR: 'Failed to initialize flow tables: %(err_msg)s'},
+ERR_MSG = {STATE_INIT_FLOW:
+            {TIMEOUT: 'Failed to initialize flow tables: barrier request timeout.',
+            RCV_ERR: 'Failed to initialize flow tables: %(err_msg)s'},
        STATE_INIT_THROUGHPUT_FLOW:
-       {TIMEOUT: 'Failed to initialize flow tables of tester_sw: '
+            {TIMEOUT: 'Failed to initialize flow tables of tester_sw: '
                  'barrier request timeout.',
-        RCV_ERR: 'Failed to initialize flow tables of tester_sw: '
+            RCV_ERR: 'Failed to initialize flow tables of tester_sw: '
                  '%(err_msg)s'},
        STATE_FLOW_INSTALL:
-       {TIMEOUT: 'Failed to add flows: barrier request timeout.',
-        RCV_ERR: 'Failed to add flows: %(err_msg)s'},
+            {TIMEOUT: 'Failed to add flows: barrier request timeout.',
+            RCV_ERR: 'Failed to add flows: %(err_msg)s'},
        STATE_THROUGHPUT_FLOW_INSTALL:
-       {TIMEOUT: 'Failed to add flows to tester_sw: barrier request timeout.',
-        RCV_ERR: 'Failed to add flows to tester_sw: %(err_msg)s'},
+            {TIMEOUT: 'Failed to add flows to tester_sw: barrier request timeout.',
+            RCV_ERR: 'Failed to add flows to tester_sw: %(err_msg)s'},
        STATE_METER_INSTALL:
-       {TIMEOUT: 'Failed to add meters: barrier request timeout.',
-        RCV_ERR: 'Failed to add meters: %(err_msg)s'},
+            {TIMEOUT: 'Failed to add meters: barrier request timeout.',
+            RCV_ERR: 'Failed to add meters: %(err_msg)s'},
        STATE_GROUP_INSTALL:
-       {TIMEOUT: 'Failed to add groups: barrier request timeout.',
-        RCV_ERR: 'Failed to add groups: %(err_msg)s'},
+            {TIMEOUT: 'Failed to add groups: barrier request timeout.',
+            RCV_ERR: 'Failed to add groups: %(err_msg)s'},
        STATE_FLOW_EXIST_CHK:
-       {FAILURE: 'Added incorrect flows: %(flows)s',
-        TIMEOUT: 'Failed to add flows: flow stats request timeout.',
-        RCV_ERR: 'Failed to add flows: %(err_msg)s'},
+            {FAILURE: 'Added incorrect flows: %(flows)s',
+            TIMEOUT: 'Failed to add flows: flow stats request timeout.',
+            RCV_ERR: 'Failed to add flows: %(err_msg)s'},
        STATE_METER_EXIST_CHK:
-       {FAILURE: 'Added incorrect meters: %(meters)s',
-        TIMEOUT: 'Failed to add meters: meter config stats request timeout.',
-        RCV_ERR: 'Failed to add meters: %(err_msg)s'},
+            {FAILURE: 'Added incorrect meters: %(meters)s',
+            TIMEOUT: 'Failed to add meters: meter config stats request timeout.',
+            RCV_ERR: 'Failed to add meters: %(err_msg)s'},
        STATE_GROUP_EXIST_CHK:
-       {FAILURE: 'Added incorrect groups: %(groups)s',
-        TIMEOUT: 'Failed to add groups: group desc stats request timeout.',
-        RCV_ERR: 'Failed to add groups: %(err_msg)s'},
+            {FAILURE: 'Added incorrect groups: %(groups)s',
+            TIMEOUT: 'Failed to add groups: group desc stats request timeout.',
+            RCV_ERR: 'Failed to add groups: %(err_msg)s'},
        STATE_TARGET_PKT_COUNT:
-       {TIMEOUT: 'Failed to request port stats from target: request timeout.',
-        RCV_ERR: 'Failed to request port stats from target: %(err_msg)s'},
+            {TIMEOUT: 'Failed to request port stats from target: request timeout.',
+            RCV_ERR: 'Failed to request port stats from target: %(err_msg)s'},
        STATE_TESTER_PKT_COUNT:
-       {TIMEOUT: 'Failed to request port stats from tester: request timeout.',
-        RCV_ERR: 'Failed to request port stats from tester: %(err_msg)s'},
+            {TIMEOUT: 'Failed to request port stats from tester: request timeout.',
+            RCV_ERR: 'Failed to request port stats from tester: %(err_msg)s'},
        STATE_FLOW_MATCH_CHK:
-       {FAILURE: 'Received incorrect %(pkt_type)s: %(detail)s',
-        TIMEOUT: '',  # for check no packet-in reason.
-        RCV_ERR: 'Failed to send packet: %(err_msg)s'},
+            {FAILURE: 'Received incorrect %(pkt_type)s: %(detail)s',
+            TIMEOUT: '',  # for check no packet-in reason.
+            RCV_ERR: 'Failed to send packet: %(err_msg)s'},
        STATE_NO_PKTIN_REASON:
-       {FAILURE: 'Receiving timeout: %(detail)s'},
-       STATE_GET_MATCH_COUNT:
-       {TIMEOUT: 'Failed to request table stats: request timeout.',
-        RCV_ERR: 'Failed to request table stats: %(err_msg)s'},
+            {FAILURE: 'Receiving timeout: %(detail)s'},
+            STATE_GET_MATCH_COUNT:
+            {TIMEOUT: 'Failed to request table stats: request timeout.',
+            RCV_ERR: 'Failed to request table stats: %(err_msg)s'},
        STATE_SEND_BARRIER:
-       {TIMEOUT: 'Failed to send packet: barrier request timeout.',
-        RCV_ERR: 'Failed to send packet: %(err_msg)s'},
+            {TIMEOUT: 'Failed to send packet: barrier request timeout.',
+            RCV_ERR: 'Failed to send packet: %(err_msg)s'},
        STATE_FLOW_UNMATCH_CHK:
-       {FAILURE: 'Table-miss error: increment in matched_count.',
-        ERROR: 'Table-miss error: no change in lookup_count.',
-        TIMEOUT: 'Failed to request table stats: request timeout.',
-        RCV_ERR: 'Failed to request table stats: %(err_msg)s'},
+            {FAILURE: 'Table-miss error: increment in matched_count.',
+            ERROR: 'Table-miss error: no change in lookup_count.',
+            TIMEOUT: 'Failed to request table stats: request timeout.',
+            RCV_ERR: 'Failed to request table stats: %(err_msg)s'},
        STATE_THROUGHPUT_FLOW_EXIST_CHK:
-       {FAILURE: 'Added incorrect flows to tester_sw: %(flows)s',
-        TIMEOUT: 'Failed to add flows to tester_sw: '
+            {FAILURE: 'Added incorrect flows to tester_sw: %(flows)s',
+            TIMEOUT: 'Failed to add flows to tester_sw: '
                  'flow stats request timeout.',
-        RCV_ERR: 'Failed to add flows to tester_sw: %(err_msg)s'},
+            RCV_ERR: 'Failed to add flows to tester_sw: %(err_msg)s'},
        STATE_GET_THROUGHPUT:
-       {TIMEOUT: 'Failed to request flow stats: request timeout.',
-        RCV_ERR: 'Failed to request flow stats: %(err_msg)s'},
+            {TIMEOUT: 'Failed to request flow stats: request timeout.',
+            RCV_ERR: 'Failed to request flow stats: %(err_msg)s'},
        STATE_THROUGHPUT_CHK:
-       {FAILURE: 'Received unexpected throughput: %(detail)s'},
+            {FAILURE: 'Received unexpected throughput: %(detail)s'},
        STATE_DISCONNECTED:
-       {ERROR: 'Disconnected from switch'}}
+            {ERROR: 'Disconnected from switch'},
+        STATE_GET_PORT_DESC:
+            {ERROR: 'Failed to port do not links: %(detail)s',
+            TIMEOUT: 'Failed to get port stats: request timeout.'}}
 
-ERR_MSG = 'OFPErrorMsg[type=0x%02x, code=0x%02x]'
+#ERR_MSG = 'OFPErrorMsg[type=0x%02x, code=0x%02x]'
+
+
 
 
 class TestMessageBase(RyuException):
     def __init__(self, state, message_type, **argv):
-        msg = MSG[state][message_type] % argv
+        self.state = state
+        self.message_type = message_type
+        msg = ERR_MSG[state][message_type] % argv
         super(TestMessageBase, self).__init__(msg=msg)
 
 
@@ -264,74 +338,53 @@ class TestTimeout(TestMessageBase):
 
 
 class TestReceiveError(TestMessageBase):
-    def __init__(self, state, err_msg):
-        argv = {'err_msg': ERR_MSG % (err_msg.type, err_msg.code)}
+    def __init__(self, state, err_msg, ofp_ver):
+        if ofp_ver == ofproto_v1_3.OFP_VERSION :
+            self.ofproto = ofproto_v1_3
+        elif ofp_ver == ofproto_v1_4.OFP_VERSION :    
+            pass
+        elif ofp_ver == ofproto_v1_5.OFP_VERSION :    
+            pass
+
+        _type = self.ofproto.OFP_ERR_TYPE_STR[err_msg.type]
+        _code = _type[err_msg.code]
+
+        argv = {'err_msg': "OFPErrorMsg[type=%s(0x%02x), code=%s(0x%02x)]" 
+                % (_type["type"], err_msg.type,
+                   _code, err_msg.code)}
+        
         super(TestReceiveError, self).__init__(state, RCV_ERR, **argv)
 
+    #def __str__(self):
+    #    code = self.ofproto.OFP_ERR_TYPE_STR[self.err_type]
+    #    return "err_type: %s(%s), err_code: %s(%s)" % \
+    #            (code["type"], self.err_type, code[self.err_code] , self.err_code)
 
 class TestError(TestMessageBase):
     def __init__(self, state, **argv):
         super(TestError, self).__init__(state, ERROR, **argv)
 
 
+class RegisterException(Exception):
+
+    def __init__(self, dpid):
+        super(RegisterException, self).__init__()
+        self.dpid = dpid
 
 class OfTester(app_manager.RyuApp):
-    """ OpenFlow Switch Tester. """
-
-    tester_ver = None
-    target_ver = None
+    """ OpenFlow Switch Tester. """ 
 
     def __init__(self, *args, **kwargs):
         super(OfTester, self).__init__(*args, **kwargs)
         self.name = 'oftester'
-        
-        # by jesse
+    
         self._set_logger()
-        self.target_dpid = None
-        self.target_send_port_1 = None
-        self.target_send_port_2 = None
-        self.target_recv_port = None
-        self.tester_dpid = None
-        self.tester_send_port = None
-        self.tester_recv_port_1 = None
-        self.tester_recv_port_2 = None
-        target_opt = None
-        tester_opt = None
-        target_sw = None
-        tester_sw = None
-        
-        '''
-        self._set_logger()
-        self.target_dpid = self._convert_dpid(CONF['test-switch']['target'])
-        self.target_send_port_1 = CONF['test-switch']['target_send_port_1']
-        self.target_send_port_2 = CONF['test-switch']['target_send_port_2']
-        self.target_recv_port = CONF['test-switch']['target_recv_port']
-        self.tester_dpid = self._convert_dpid(CONF['test-switch']['tester'])
-        self.tester_send_port = CONF['test-switch']['tester_send_port']
-        self.tester_recv_port_1 = CONF['test-switch']['tester_recv_port_1']
-        self.tester_recv_port_2 = CONF['test-switch']['tester_recv_port_2']
-        self.logger.info('target_dpid=%s',
-                         dpid_lib.dpid_to_str(self.target_dpid))
-        self.logger.info('tester_dpid=%s',
-                         dpid_lib.dpid_to_str(self.tester_dpid))
+        self.__init_base()
+        self.connected_list = {}  # Save what swtiches is connected to the controller
+        self.test_thread_state = THREAD_STATE_READY
+        self.test_thread = None
 
-        target_opt = CONF['test-switch']['target_version']
-        self.logger.info('target ofp version=%s', target_opt)
-        OfTester.target_ver = self._get_version(target_opt)
-        tester_opt = CONF['test-switch']['tester_version']
-        self.logger.info('tester ofp version=%s', tester_opt)
-        OfTester.tester_ver = self._get_version(tester_opt)
-        # set app_supported_versions later.
-        ofproto_protocol.set_app_supported_versions(
-            [OfTester.target_ver, OfTester.tester_ver])
-
-        self.test_dir = CONF['test-switch']['dir']
-        self.test_dir = "/usr/local/lib/python2.7/dist-packages/ryu/tests/switch/of10"
-        self.logger.info('Test files directory = %s', self.test_dir)
-
-        self.target_sw = OpenFlowSw(DummyDatapath(), self.logger)
-        self.tester_sw = OpenFlowSw(DummyDatapath(), self.logger)
-        '''
+    def __init_base(self):
         self.evnet_ofp_state_change = None
         self.state = STATE_INIT_FLOW
         self.sw_waiter = None
@@ -341,17 +394,94 @@ class OfTester(app_manager.RyuApp):
         self.ingress_event = None
         self.ingress_threads = []
         self.thread_msg = None
-        self.test_thread = None
-             #hub.spawn(self._test_sequential_execute, test_dir)
 
-        # by jesse
-        self.connected_list = {}
-        self.result_list = []
-        self.test_thread_state = "idle"
-        self.test_item = None
+        self.target_dpid = ""
+        self.tester_dpid = ""
+        self.description = ""
+        self.test_report = []  # test log
 
-               
-      
+    def __init(self, req) :
+        self.logger.info('--- Test Initialize ---')
+        self.__init_base()
+    
+        self.target_dpid = req.target_dpid
+        self.target_recv_port =  req.target_recv_port
+        self.target_send_port_1 = req.target_send_port_1
+        self.target_send_port_2 = req.target_send_port_2
+            
+        self.tester_dpid = req.tester_dpid
+        self.tester_send_port = req.tester_send_port
+        self.tester_recv_port_1 = req.tester_recv_port_1
+        self.tester_recv_port_2 = req.tester_recv_port_2
+
+        self.port_map = {
+            self.target_recv_port  : TARGET_RECV_PORT,
+            self.target_send_port_1: TARGET_SEND_PORT_1,
+            self.target_send_port_2: TARGET_SEND_PORT_2,
+            self.tester_send_port  : TESTER_SEND_PORT,
+            self.tester_recv_port_1: TESTER_RECV_PORT_1,
+            self.tester_recv_port_2: TESTER_RECV_PORT_2   
+        }
+
+        self.map_port = {
+            TARGET_RECV_PORT  : self.target_recv_port,
+            TARGET_SEND_PORT_1: self.target_send_port_1,
+            TARGET_SEND_PORT_2: self.target_send_port_2,
+            TESTER_SEND_PORT  : self.tester_send_port,
+            TESTER_RECV_PORT_1: self.tester_recv_port_1,
+            TESTER_RECV_PORT_2: self.tester_recv_port_2   
+        }
+
+        self.logger.info('target_dpid=%s',
+                        dpid_lib.dpid_to_str(self.target_dpid))
+
+        self.logger.info('tester_dpid=%s',
+                        dpid_lib.dpid_to_str(self.tester_dpid))
+
+        ofctl_map = {
+            "openflow10": ofctl_v1_0,
+            "openflow12": ofctl_v1_2,
+            "openflow13": ofctl_v1_3,
+            "openflow14": None,
+            "openflow15": None
+        }
+
+        target_opt = req.target_version
+        self.logger.info('target_ofp_version=%s', target_opt)
+        OfTester.target_ver = self._get_version(target_opt)
+        self.target_ofctl = ofctl_map[target_opt.lower()]
+        
+        tester_opt = req.tester_version
+        self.logger.info('tester_ofp_version=%s', tester_opt)
+        OfTester.tester_ver = self._get_version(tester_opt)
+        self.tester_ofctl = ofctl_map[tester_opt.lower()]
+          
+        # set app_supported_versions later.
+        ofproto_protocol.set_app_supported_versions(
+                  [OfTester.target_ver, OfTester.tester_ver])
+
+        self.target_sw = OpenFlowSw(DummyDatapath(), self.logger, req)
+        self.tester_sw = OpenFlowSw(DummyDatapath(), self.logger, req)
+
+
+        self._unregister_sw()
+        if self.connected_list.has_key(self.target_dpid):
+            dp = self.connected_list[self.target_dpid]
+            if self._register_sw(dp) == False:
+                raise RegisterException(self.target_dpid)
+        else:
+            raise RegisterException(self.target_dpid)
+
+
+        if self.connected_list.has_key(self.tester_dpid):
+            dp = self.connected_list[self.tester_dpid]
+            if self._register_sw(dp) == False:
+                raise RegisterException(self.tester_dpid)
+        else:
+            raise RegisterException(self.tester_dpid)            
+            
+        self.logger.info('--- Test Initialize End ---')
+
 
     def _get_version(self, opt):
         vers = {
@@ -369,71 +499,47 @@ class OfTester(app_manager.RyuApp):
             self._test_end()
         return ver
 
+    def _get_version_desc(self, opt):
+        vers = {
+            ofproto_v1_3.OFP_VERSION: 'openflow13',
+            ofproto_v1_4.OFP_VERSION: 'openflow14',
+            ofproto_v1_5.OFP_VERSION: 'openflow15'
+        }
+        return ves[opt]
+
     def _set_logger(self):
         self.logger.propagate = False
         s_hdlr = logging.StreamHandler()
         self.logger.addHandler(s_hdlr)
-        if CONF.log_file:
-            f_hdlr = logging.handlers.WatchedFileHandler(CONF.log_file)
-            self.logger.addHandler(f_hdlr)
 
-    def _convert_dpid(self, dpid_str):
-        try:
-            dpid = int(dpid_str, 16)
-        except ValueError as err:
-            self.logger.error('Invarid dpid parameter. %s', err)
-            self._test_end()
-        return dpid
-
+    
     def close(self):
         if self.test_thread is not None:
             hub.kill(self.test_thread)
         if self.ingress_event:
             self.ingress_event.set()
         hub.joinall([self.test_thread])
-        self._test_end('--- Test terminated ---')
+        
 
-    @set_ev_cls(ofp_event.EventOFPStateChange,
-                [handler.MAIN_DISPATCHER, handler.DEAD_DISPATCHER])
-    def dispacher_change(self, ev):
-        assert ev.datapath is not None
-        if ev.state == handler.MAIN_DISPATCHER:
-            self.evnet_ofp_state_change = ev.state
-            #self._register_sw(ev.datapath)
-            if ev.datapath.id is not None:
-              self.connected_list[ev.datapath.id] = ev.datapath
-        elif ev.state == handler.DEAD_DISPATCHER:
-            self.evnet_ofp_state_change = ev.state
-            #self._unregister_sw(ev.datapath)
-
-            if ev.datapath.id is not None:
-              del self.connected_list[ev.datapath.id]
-            
     def _register_sw(self, dp):
-        vers = {
-            ofproto_v1_3.OFP_VERSION: 'openflow13',
-            ofproto_v1_4.OFP_VERSION: 'openflow14',
-            ofproto_v1_5.OFP_VERSION: 'openflow15'
-        }
-        if dp.id == self.target_dpid:
+        status = True
+        if isinstance(self.target_sw.dp, DummyDatapath) and dp.id == self.target_dpid:
             if dp.ofproto.OFP_VERSION != OfTester.target_ver:
                 msg = 'Join target SW, but ofp version is not %s.' % \
-                    vers[OfTester.target_ver]
+                    self._get_version_desc(OfTester.target_ver)
             else:
                 self.target_sw.dp = dp
                 msg = 'Join target SW.'
         elif dp.id == self.tester_dpid:
             if dp.ofproto.OFP_VERSION != OfTester.tester_ver:
                 msg = 'Join tester SW, but ofp version is not %s.' % \
-                    vers[OfTester.tester_ver]
+                    self._get_version_desc(OfTester.tester_ver)
             else:
                 self.tester_sw.dp = dp
-                self.tester_sw.add_flow(
-                    in_port=self.tester_recv_port_1,
-                    out_port=dp.ofproto.OFPP_CONTROLLER)
                 msg = 'Join tester SW.'
         else:
             msg = 'Connect unknown SW.'
+            status = False
         if dp.id:
             self.logger.info('dpid=%s : %s',
                              dpid_lib.dpid_to_str(dp.id), msg)
@@ -443,50 +549,245 @@ class OfTester(app_manager.RyuApp):
             if self.sw_waiter is not None:
                 self.sw_waiter.set()
 
-    def _unregister_sw(self, dp):
-        if dp.id == self.target_dpid:
-            self.target_sw.dp = DummyDatapath()
-            msg = 'Leave target SW.'
-        elif dp.id == self.tester_dpid:
-            self.tester_sw.dp = DummyDatapath()
-            msg = 'Leave tester SW.'
-        else:
-            msg = 'Disconnect unknown SW.'
-        if dp.id:
-            self.logger.info('dpid=%s : %s',
-                             dpid_lib.dpid_to_str(dp.id), msg)
+        return status
 
-    def _test_sequential_execute(self, test_dir):
-        """ Execute OpenFlow Switch test. """
+    def _unregister_sw(self):
+        self.target_sw.dp = DummyDatapath()
+        self.tester_sw.dp = DummyDatapath()
+              
 
-        # Parse test pattern from test files.
-        tests = TestPatterns(test_dir, self.logger)
-        if not tests:
-            self.logger.warning(NO_TEST_FILE)
-            self._test_end()
+    def synchronized(func):
+        func.__lock__ = threading.Lock()
+        def synced_func(*args, **kws):
+            with func.__lock__:
+                return func(*args, **kws)
+        return synced_func  
 
-        test_report = {}
-        self.logger.info('--- Test start ---')
-        test_keys = tests.keys()
-        test_keys.sort()
-        for file_name in test_keys:
-            report = self._test_file_execute(tests[file_name])
-            for result, descriptions in report.items():
-                test_report.setdefault(result, [])
-                test_report[result].extend(descriptions)
-        self._test_end(msg='---  Test end  ---', report=test_report)
+    def _wait(self):
+        """ Wait until specific OFP message received
+             or timer is exceeded. """
+        assert self.waiter is None
+
+        self.waiter = hub.Event()
+        self.rcv_msgs = []
+        timeout = False
+
+        timer = hub.Timeout(WAIT_TIMER)
+        try:
+            self.waiter.wait()
+        except hub.Timeout as t:
+            if t is not timer:
+                raise RyuException('Internal error. Not my timeout.')
+            timeout = True
+        finally:
+            timer.cancel()
+
+        self.waiter = None
+
+        if timeout:
+            raise TestTimeout(self.state)
+        if (self.rcv_msgs and isinstance(
+                self.rcv_msgs[0],
+                self.rcv_msgs[0].datapath.ofproto_parser.OFPErrorMsg)):
+            raise TestReceiveError(self.state, self.rcv_msgs[0], OfTester.target_ver)
+
+
+    @set_ev_cls([ofp_event.EventOFPFlowStatsReply,
+                 ofp_event.EventOFPMeterConfigStatsReply,
+                 ofp_event.EventOFPTableStatsReply,
+                 ofp_event.EventOFPPortStatsReply,
+                 ofp_event.EventOFPGroupDescStatsReply,
+                 ofp_event.EventOFPPortDescStatsReply],
+                handler.MAIN_DISPATCHER)
+    def stats_reply_handler(self, ev):
+        # keys: stats reply event classes
+        # values: states in which the events should be processed
+        event_states = {
+            ofp_event.EventOFPFlowStatsReply:
+                [STATE_FLOW_EXIST_CHK,
+                 STATE_THROUGHPUT_FLOW_EXIST_CHK,
+                 STATE_GET_THROUGHPUT,
+                 STATE_TARGET_FLOWS],
+            ofp_event.EventOFPMeterConfigStatsReply:
+                [STATE_METER_EXIST_CHK],
+            ofp_event.EventOFPTableStatsReply:
+                [STATE_GET_MATCH_COUNT,
+                 STATE_FLOW_UNMATCH_CHK],
+            ofp_event.EventOFPPortStatsReply:
+                [STATE_TARGET_PKT_COUNT,
+                 STATE_TESTER_PKT_COUNT],
+            ofp_event.EventOFPGroupDescStatsReply:
+                [STATE_GROUP_EXIST_CHK],
+            ofp_event.EventOFPPortDescStatsReply:
+                [STATE_GET_PORT_DESC]
+        }
+        if self.state in event_states[ev.__class__]:
+            if self.waiter and ev.msg.xid in self.send_msg_xids:
+                self.rcv_msgs.append(ev.msg)
+                if not ev.msg.flags & \
+                        ev.msg.datapath.ofproto.OFPMPF_REPLY_MORE:
+                    self.waiter.set()
+                    hub.sleep(0)
+
+    @set_ev_cls(ofp_event.EventOFPBarrierReply, handler.MAIN_DISPATCHER)
+    def barrier_reply_handler(self, ev):
+        state_list = [STATE_INIT_FLOW,
+                      STATE_INIT_THROUGHPUT_FLOW,
+                      STATE_INIT_METER,
+                      STATE_INIT_GROUP,
+                      STATE_FLOW_INSTALL,
+                      STATE_THROUGHPUT_FLOW_INSTALL,
+                      STATE_METER_INSTALL,
+                      STATE_GROUP_INSTALL,
+                      STATE_SEND_BARRIER]
+        if self.state in state_list:
+            if self.waiter and ev.msg.xid in self.send_msg_xids:
+                self.rcv_msgs.append(ev.msg)
+                self.waiter.set()
+                hub.sleep(0)
+
+    @set_ev_cls(ofp_event.EventOFPPacketIn, handler.MAIN_DISPATCHER)
+    def packet_in_handler(self, ev):
+        datapath = ev.msg.datapath
+        if datapath.id != self.target_dpid and datapath.id != self.tester_dpid:
+            return
+        state_list = [STATE_FLOW_MATCH_CHK]
+
+        if self.state in state_list:
+            if self.waiter:
+                self.rcv_msgs.append(ev.msg)
+                self.waiter.set()
+                hub.sleep(0)
+        
+    @set_ev_cls(ofp_event.EventOFPErrorMsg, [handler.HANDSHAKE_DISPATCHER,
+                                             handler.CONFIG_DISPATCHER,
+                                             handler.MAIN_DISPATCHER])
+    def error_msg_handler(self, ev):
+        if ev.msg.xid in self.send_msg_xids:
+            self.rcv_msgs.append(ev.msg)
+            if self.waiter:
+                self.waiter.set()
+                hub.sleep(0)
+
+
+    @set_ev_cls(ofp_event.EventOFPStateChange,
+                [handler.MAIN_DISPATCHER, handler.DEAD_DISPATCHER])
+    def dispacher_change(self, ev):
+        assert ev.datapath is not None
+        if ev.state == handler.MAIN_DISPATCHER:
+            self.evnet_ofp_state_change = ev.state
+            if ev.datapath.id is not None:
+                self.connected_list[ev.datapath.id] = ev.datapath
+
+        elif ev.state == handler.DEAD_DISPATCHER:
+            self.evnet_ofp_state_change = ev.state
+            if ev.datapath.id is not None:
+                del self.connected_list[ev.datapath.id] 
+
+    # Rest Request 
+    @set_ev_cls([rest_event.EventTestItemRequest,
+                 rest_event.EventTestItemResultRequest,
+                 rest_event.EventTestItemStopRequest,
+                 rest_event.EventCheckLinkRequest,
+                 rest_event.EventCheckLinkResultRequest,
+                 rest_event.EventCheckLinkStopRequest])
+    def test_request_handler(self,  req):
+        self._start_handle_thread(req)
+
+
+    @synchronized
+    def _start_handle_thread(self, req):
+        def _get_result():
+            return {
+                RESULT_TARGET_DPID : self.target_dpid,
+                RESULT_EXECUTE_STATE : self.test_thread_state,
+                RESULT_EXECUTE_DESC : THREAD_STATE_STR[self.test_thread_state]
+            }
+
+        if isinstance(req, rest_event.EventTestItemRequest):
+            thread_desc = self._do_item_test(req)
+            rep = rest_event.EventTestItemReply(req.src, _get_result())
+        elif isinstance(req, rest_event.EventTestItemResultRequest):
+            thread_desc = self._get_item_test(req)
+            result = _get_result()
+            result[RESULT_REPORT] = self.test_report
+            rep = rest_event.EventTestItemResultReply(req.src, result)
+        elif isinstance(req, rest_event.EventTestItemStopRequest):
+            thread_desc = self._stop_item_test()
+            rep = rest_event.EventCheckLinkResultReply(req.src, _get_result())
+
+        elif isinstance(req, rest_event.EventCheckLinkRequest):
+            thread_desc = self._do_check_link(req)
+            rep = rest_event.EventTestItemStopReply(req.src, _get_result())
+        elif isinstance(req, rest_event.EventCheckLinkResultRequest):
+            thread_desc = self._get_check_link(req)
+            result = _get_result()
+            result[RESULT_REPORT] = self.test_report
+            rep = rest_event.EventCheckLinkReply(req.src, result)
+        elif isinstance(req, rest_event.EventCheckLinkStopRequest):
+            thread_desc = self._stop_check_link(req)
+            rep = rest_event.EventCheckLinkStopReply(req.src, _get_result())
+    
+        self.reply_to_request(req, rep)
+
+    def _execute_thread(self, func, req):
+        try :
+            if  self.test_thread_state != THREAD_STATE_RUNNING and \
+                self.test_thread_state != THREAD_STATE_START_SUCEESS:
+
+                self.__init(req)
+                self.test_thread = hub.spawn(func,req)
+
+                if self.test_thread == None:
+                    self.test_thread_state = THREAD_STATE_START_FAILURE
+                else :
+                    self.test_thread_state = THREAD_STATE_START_SUCEESS
+            else :
+                self.test_thread_state = THREAD_STATE_RUNNING
+        except RegisterException as err :
+            self.test_thread_state = THREAD_STATE_REGISTER_DPID_ERROR
+            return "%s(dpid=%s)" % (THREAD_STATE_STR[self.test_thread_state], e.dpid)
+        except (ValueError, TypeError) as err:
+            self.test_thread_state = THREAD_STATE_TEST_PATTERN_ERROR
+            return "%s(%s)" % (THREAD_STATE_STR[self.test_thread_state], e.message)
+        return THREAD_STATE_STR[self.test_thread_state]
+
+    def _get_thread(self):
+        if  self.test_thread_state == THREAD_STATE_START_SUCEESS:
+            self.test_thread_state = THREAD_STATE_RUNNING
+
+    def _stop_thread(self):
+        if self.test_thread_state == THREAD_STATE_RUNNING or \
+            self.test_thread_state == THREAD_STATE_START_SUCEESS :
+            self.close()
+        self._test_end('--- Test terminated ---')
+
+    def _do_item_test(self, req):
+        return self._execute_thread(self._test_items_execute, req)
+
+    def _get_item_test(self, req):
+        self._get_thread()
+
+    def _stop_item_test(self):
+        self._stop_thread()
+
+    def _do_check_link(self, req):
+        return self._execute_thread(self._test_check_links_execute, req)
+
+    def _get_check_link(self, req):
+        self._get_thread()
+
+    def _stop_check_link(self, req):
+        self._stop_thread()
         
 
-    def _test_file_execute(self, testfile):
-        report = {}
-        for i, test in enumerate(testfile.tests):
-            desc = testfile.description if i == 0 else None
-            result = self._test_execute(test, desc)
-            report.setdefault(result, [])
-            report[result].append([testfile.description, test.description])
-        return report
+    def _test_check_links_execute(self, req):
+        report = self._test_check_link_execute()
+        self.logger.info(report)
+        self.test_report.append(report)
+        self._test_end(msg='---  Test end  ---', report=None) 
 
-    def _test_execute(self, test, description):
+    def _test_check_link_execute(self):
         if isinstance(self.target_sw.dp, DummyDatapath) or \
                 isinstance(self.tester_sw.dp, DummyDatapath):
             self.logger.info('waiting for switches connection...')
@@ -494,141 +795,337 @@ class OfTester(app_manager.RyuApp):
             self.sw_waiter.wait()
             self.sw_waiter = None
 
+        self.logger.info('--- Execute Check Links ---')
+        report = {}
+        report[RESULT_REPORT_STATUS] = RESULT_OK
+        i = -1
+        try:
+            # check target port
+            report[RESULT_REPORT_PORT_LINK_STATE] = self._get_port_link_status()
+                    
+            check_send_port = [
+                {"STATUS": "NO TEST", "INFO":"target_recv_port<->tester_send_port"},
+                {"STATUS": "NO TEST", "INFO":"tester_recv_port_1<->target_send_port_1"},
+                {"STATUS": "NO TEST", "INFO":"tester_recv_port_2<->target_send_port_2"}]
+            
+            i=i+1
+            self._check_send_port(self.target_recv_port, 
+                                        self.tester_send_port)
+            check_send_port[i]["STATUS"] = "OK"
+
+            i=i+1
+            self._check_send_port(self.tester_recv_port_1, 
+                                        self.target_send_port_1)
+            check_send_port[i]["STATUS"] = "OK"
+            
+            i=i+1
+            self._check_send_port(self.tester_recv_port_2, 
+                                        self.target_send_port_2)
+            check_send_port[i]["STATUS"] = "OK"
+        except (TestReceiveError, TestFailure,
+                TestTimeout, TestError) as err:
+            print type(err)
+            report[RESULT_REPORT_STATUS] = RESULT_ERROR
+            report[RESULT_REPORT_TEST_STATE] = STATE_STR[self.state]
+            report[RESULT_REPORT_TEST_REASON] =  str(err)
+            if i >= 0: check_send_port[i]["STATUS"] = "FAILURE"
+        except Exception as err :
+            report[RESULT_REPORT_STATUS] = RESULT_ERROR
+            report[RESULT_REPORT_TEST_STATE] = STATE_STR[self.state]
+            report[RESULT_REPORT_TEST_REASON] =  str(err)
+            if i >= 0: check_send_port[i]["STATUS"] = "FAILURE"
+        finally:
+            self.ingress_event = None
+            for tid in self.ingress_threads:
+                hub.kill(tid)
+            self.ingress_threads = []
+        
+        report[RESULT_REPORT_CHECK_SEND_PORT] = check_send_port
+
+        hub.sleep(0)
+        return report
+
+    def _test_items_execute(self, req):
+        report = {}
+        test_pattens = TestPatterns(self.map_port, req, 
+                                    self.logger, req.parse_tests)
+        self.description = test_pattens.description
+        for i, test_item in enumerate(test_pattens.test_items):
+            desc = test_pattens.description if i == 0 else None
+            report = self._test_item_execute(test_item, desc)
+            self.logger.info(report)
+            self.test_report.append(report)
+        self._test_end(msg='---  Test end  ---', report=None) 
+
+    def _test_item_execute(self, test_item, description):
+        if isinstance(self.target_sw.dp, DummyDatapath) or \
+                isinstance(self.tester_sw.dp, DummyDatapath):
+            self.logger.info('waiting for switches connection...')
+            self.sw_waiter = hub.Event()
+            self.sw_waiter.wait()
+            self.sw_waiter = None
+
+        self.logger.info('--- Execute Test Item ---')
         if description:
             self.logger.info('%s', description)
-            self.test_item = description
         self.thread_msg = None
         
         # Test execute.
+        report = {}
+        report[RESULT_REPORT_STATUS] = RESULT_OK
+        report[RESULT_REPORT_TEST_ITEM] = test_item.description
         try:
             # Initialize.
             self._test(STATE_INIT_METER)
             self._test(STATE_INIT_GROUP)
             self._test(STATE_INIT_FLOW, self.target_sw)
+            flow = self.target_sw.get_flow(
+                in_port=self.tester_recv_port_1,
+                out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER)
+            self._test(STATE_FLOW_INSTALL, self.target_sw, flow )
+            self._test(STATE_FLOW_EXIST_CHK,
+                        self.target_sw.send_flow_stats, flow)
+
             self._test(STATE_INIT_THROUGHPUT_FLOW, self.tester_sw,
-                       THROUGHPUT_COOKIE)
+                                    THROUGHPUT_COOKIE)
+            
             # Install flows.
-            for flow in test.prerequisite:
+            for flow in test_item.prerequisite:
                 if isinstance(
                         flow, self.target_sw.dp.ofproto_parser.OFPFlowMod):
+                    expected_target_flow = flow
                     self._test(STATE_FLOW_INSTALL, self.target_sw, flow)
                     self._test(STATE_FLOW_EXIST_CHK,
-                               self.target_sw.send_flow_stats, flow)
+                        self.target_sw.send_flow_stats, flow)
+                    
                 elif isinstance(
                         flow, self.target_sw.dp.ofproto_parser.OFPMeterMod):
+                    expected_target_flow = flow
                     self._test(STATE_METER_INSTALL, self.target_sw, flow)
                     self._test(STATE_METER_EXIST_CHK,
-                               self.target_sw.send_meter_config_stats, flow)
+                            self.target_sw.send_meter_config_stats, flow)
                 elif isinstance(
                         flow, self.target_sw.dp.ofproto_parser.OFPGroupMod):
+                    expected_target_flow = flow
                     self._test(STATE_GROUP_INSTALL, self.target_sw, flow)
                     self._test(STATE_GROUP_EXIST_CHK,
-                               self.target_sw.send_group_desc_stats, flow)
-            # Do tests.
-            for pkt in test.tests:
+                            self.target_sw.send_group_desc_stats, flow)
 
-                # Get stats before sending packet(s).
-                if KEY_EGRESS in pkt or KEY_PKT_IN in pkt:
-                    target_pkt_count = [self._test(STATE_TARGET_PKT_COUNT,
-                                                   True)]
-                    tester_pkt_count = [self._test(STATE_TESTER_PKT_COUNT,
-                                                   False)]
-                elif KEY_THROUGHPUT in pkt:
-                    # install flows for throughput analysis
-                    for throughput in pkt[KEY_THROUGHPUT]:
-                        flow = throughput[KEY_FLOW]
-                        self._test(STATE_THROUGHPUT_FLOW_INSTALL,
+
+            if len(test_item.tests) > 0:
+                # Do tests.
+                target_pkt_count = []
+                tester_pkt_count = []
+                for pkt in test_item.tests:
+                    # Get stats before sending packet(s).
+                    if KEY_EGRESS in pkt or KEY_PKT_IN in pkt:
+                        target_pkt_count.append(self._test(STATE_TARGET_PKT_COUNT,
+                                                       True))
+                        tester_pkt_count.append(self._test(STATE_TESTER_PKT_COUNT,
+                                                       False))
+                    elif KEY_THROUGHPUT in pkt:
+                        # install flows for throughput analysis
+                        for throughput in pkt[KEY_THROUGHPUT]:
+                            flow = throughput[KEY_FLOW]
+                            self._test(STATE_THROUGHPUT_FLOW_INSTALL,
                                    self.tester_sw, flow)
-                        self._test(STATE_THROUGHPUT_FLOW_EXIST_CHK,
+                            self._test(STATE_THROUGHPUT_FLOW_EXIST_CHK,
                                    self.tester_sw.send_flow_stats, flow)
-                    start = self._test(STATE_GET_THROUGHPUT)
-                elif KEY_TBL_MISS in pkt:
-                    before_stats = self._test(STATE_GET_MATCH_COUNT)
+                        start = self._test(STATE_GET_THROUGHPUT)
+                    elif KEY_TBL_MISS in pkt:
+                        before_stats = self._test(STATE_GET_MATCH_COUNT)
 
-                # Send packet(s).
-                if KEY_INGRESS in pkt:
-                    self._one_time_packet_send(pkt)
-                elif KEY_PACKETS in pkt:
-                    self._continuous_packet_send(pkt)
+                    # Send packet(s).
+                    if KEY_INGRESS in pkt:
+                        self._one_time_packet_send(pkt)
+                    elif KEY_PACKETS in pkt:
+                        self._continuous_packet_send(pkt)
 
-                # Check a result.
-                if KEY_EGRESS in pkt or KEY_PKT_IN in pkt:
-                    result = self._test(STATE_FLOW_MATCH_CHK, pkt)
-                    if result == TIMEOUT:
-                        target_pkt_count.append(self._test(
-                            STATE_TARGET_PKT_COUNT, True))
-                        tester_pkt_count.append(self._test(
-                            STATE_TESTER_PKT_COUNT, False))
-                        test_type = (KEY_EGRESS if KEY_EGRESS in pkt
-                                     else KEY_PKT_IN)
-                        self._test(STATE_NO_PKTIN_REASON, test_type,
-                                   target_pkt_count, tester_pkt_count)
-                elif KEY_THROUGHPUT in pkt:
-                    end = self._test(STATE_GET_THROUGHPUT)
-                    self._test(STATE_THROUGHPUT_CHK, pkt[KEY_THROUGHPUT],
-                               start, end)
-                elif KEY_TBL_MISS in pkt:
-                    self._test(STATE_SEND_BARRIER)
-                    hub.sleep(INTERVAL)
-                    self._test(STATE_FLOW_UNMATCH_CHK, before_stats, pkt)
+                    # Check a result.
+                    if KEY_EGRESS in pkt or KEY_PKT_IN in pkt:
+                        result = self._test(STATE_FLOW_MATCH_CHK, pkt)
+                        if result == TIMEOUT:
+                            target_pkt_count.append(self._test(
+                                STATE_TARGET_PKT_COUNT, True))
+                            tester_pkt_count.append(self._test(
+                                STATE_TESTER_PKT_COUNT, False))
+                            test_type = (KEY_EGRESS if KEY_EGRESS in pkt
+                                         else KEY_PKT_IN)
+                            self._test(STATE_NO_PKTIN_REASON, test_type,
+                                       target_pkt_count, tester_pkt_count)
+                    elif KEY_THROUGHPUT in pkt:
+                        end = self._test(STATE_GET_THROUGHPUT)
+                        self._test(STATE_THROUGHPUT_CHK, pkt[KEY_THROUGHPUT],
+                                   start, end)
+                    elif KEY_TBL_MISS in pkt:
+                        self._test(STATE_SEND_BARRIER)
+                        hub.sleep(INTERVAL)
+                        self._test(STATE_FLOW_UNMATCH_CHK, before_stats, pkt)
 
-            result = [TEST_OK]
-            result_type = TEST_OK
-        except (TestFailure, TestError,
-                TestTimeout, TestReceiveError) as err:
-            result = [TEST_ERROR, str(err)]
-            result_type = str(err).split(':', 1)[0]
-        except Exception:
-            result = [TEST_ERROR, RYU_INTERNAL_ERROR]
-            result_type = RYU_INTERNAL_ERROR
+        except (TestReceiveError, TestFailure,
+                TestTimeout, TestError) as err:
+            print type(err)
+            err_state = self.state
+            report[RESULT_REPORT_STATUS] = RESULT_ERROR
+            report[RESULT_REPORT_TEST_STATE] = STATE_STR[self.state]
+            report[RESULT_REPORT_TEST_REASON] =  str(err)
+        except Exception as err :
+            print type(err)
+            err_state = self.state
+            report[RESULT_REPORT_STATUS] = RESULT_ERROR
+            report[RESULT_REPORT_TEST_STATE] = STATE_STR[self.state]
+            report[RESULT_REPORT_TEST_REASON] =  str(err)
         finally:
             self.ingress_event = None
             for tid in self.ingress_threads:
                 hub.kill(tid)
             self.ingress_threads = []
 
-        # Output test result.
-        self.logger.info('    %-100s %s', test.description, result[0])
-       
-        if 1 < len(result):
-            self.logger.info('        %s', result[1])
-            if (result[1] == RYU_INTERNAL_ERROR
-                    or result == 'An unknown exception'):
-                self.logger.error(traceback.format_exc())
+        if report[RESULT_REPORT_STATUS] != RESULT_OK:
+            if isinstance(
+                expected_target_flow, self.target_sw.dp.ofproto_parser.OFPFlowMod):
+                report[RESULT_REPORT_EXPECTED_FLOW] = \
+                        self._flow_mod_to_rest(expected_target_flow, 
+                                            self.target_ofctl)
+            elif isinstance(
+                expected_target_flow, self.target_sw.dp.ofproto_parser.OFPMeterMod):
+                report[RESULT_REPORT_EXPECTED_FLOW] = \
+                        self._meter_mod_to_rest(self.target_sw.dp.ofproto_parser,
+                                            expected_target_flow, 
+                                            self.target_ofctl)
+            elif isinstance(
+                expected_target_flow, self.target_sw.dp.ofproto_parser.OFPGroupMod):
+                report[RESULT_REPORT_EXPECTED_FLOW] = \
+                        self._group_mod_to_rest(expected_target_flow, 
+                                            self.target_ofctl)
+                               
+            report[RESULT_REPORT_REAL_FLOW] = \
+                self._test(STATE_TARGET_FLOWS,self.target_sw, 
+                                            self.target_ofctl)
 
-        # by jesse
-        obj = {}
-        obj["description"] = test.description
-        obj["status"] = result[0]
-        obj["msg"] = result[1] if len(result) > 1 else ""
-        self.result_list.append(obj)
+            
+            report[RESULT_REPORT_PORT_LINK_STATE] = self._get_port_link_status()
+            report[RESULT_REPORT_SEND_PORT] = self.tester_send_port
+            report[RESULT_REPORT_OPERATING] = test_item.tests_str
 
+            if err_state in [  STATE_THROUGHPUT_FLOW_INSTALL, 
+                                STATE_THROUGHPUT_FLOW_EXIST_CHK,
+                                STATE_GET_THROUGHPUT, STATE_GET_MATCH_COUNT,
+                                STATE_FLOW_MATCH_CHK, STATE_NO_PKTIN_REASON,
+                                STATE_SEND_BARRIER, STATE_FLOW_UNMATCH_CHK] :
+                if len(target_pkt_count) > 0:
+                    report[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
+                    if len(target_pkt_count) < 2 :
+                        target_pkt_count.append(
+                                self._test(STATE_TARGET_PKT_COUNT, True))
+                    report[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[1]
+                else :
+                    target_pkt_count.append(
+                                self._test(STATE_TARGET_PKT_COUNT, True))
+                    report[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
+                    report[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[0]        
+            
         hub.sleep(0)
-        return result_type
+        return report
+
+    def _get_port_link_status(self):
+        # check target port
+        ports_link_status = {
+                TARGET_RECV_PORT  : {'state': "NOT EXISTS"},
+                TARGET_SEND_PORT_1: {'state': "NOT EXISTS"},
+                TARGET_SEND_PORT_2: {'state': "NOT EXISTS"},
+                TESTER_SEND_PORT  : {'state': "NOT EXISTS"},
+                TESTER_RECV_PORT_1: {'state': "NOT EXISTS"},
+                TESTER_RECV_PORT_2: {'state': "NOT EXISTS"}
+        }
+
+        ports = self._test(STATE_GET_PORT_DESC, self.target_sw)
+        if ports.has_key(self.target_recv_port):
+            ports_link_status[TARGET_RECV_PORT] =\
+                    ports[self.target_recv_port]
+
+        if ports.has_key(self.target_send_port_1):
+            ports_link_status[TARGET_SEND_PORT_1] =\
+                    ports[self.target_send_port_1]
+                
+        if ports.has_key(self.target_send_port_2):
+            ports_link_status[TARGET_SEND_PORT_2] =\
+                    ports[self.target_send_port_2]
+               
+            
+        # check tester port
+        ports = self._test(STATE_GET_PORT_DESC, self.tester_sw)
+        if ports.has_key(self.tester_send_port):    
+            ports_link_status[TESTER_SEND_PORT] =\
+                    ports[self.tester_send_port]
+            
+        if ports.has_key(self.tester_recv_port_1):
+            ports_link_status[TESTER_RECV_PORT_1] =\
+                    ports[self.tester_recv_port_1]
+                
+        if ports.has_key(self.tester_recv_port_2):
+            ports_link_status[TESTER_RECV_PORT_2] =\
+                    ports[self.tester_recv_port_2]
+
+        return ports_link_status
+
+    def _check_send_port(self, recv_port, send_port):
+
+        pkt = { 
+            KEY_INGRESS: '""""""\x12\x11\x11\x11\x11\x11\x08\x00E' \
+                + ' \x00K\x00\x00\x00\x00@\x06\xdb\x1e\xc0\xa8'\
+                + '\n\n\xc0\xa8\x14\x14+g\x08\xae\x00\x00\x00\x00'\
+                + '\x00\x00\x00\x00`\x00\x00\x00\xcbL\x00\x00\x00'\
+                + '\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n'\
+                + '\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17'\
+                + '\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f',
+            KEY_EGRESS: '""""""\x12\x11\x11\x11\x11\x11\x08\x00E' \
+                + ' \x00K\x00\x00\x00\x00@\x06\xdb\x1e\xc0\xa8'\
+                + '\n\n\xc0\xa8\x14\x14+g\x08\xae\x00\x00\x00\x00'\
+                + '\x00\x00\x00\x00`\x00\x00\x00\xcbL\x00\x00\x00'\
+                + '\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n'\
+                + '\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17'\
+                + '\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f'}
+
+        # Initialize.
+        self._test(STATE_INIT_METER)
+        self._test(STATE_INIT_GROUP)
+        self._test(STATE_INIT_FLOW, self.target_sw)
+            
+        # Install flow to tester
+        flow = self.target_sw.get_flow(
+            in_port=recv_port,
+            out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER)
+        self._test(STATE_FLOW_INSTALL, self.target_sw, flow )
+        self._test(STATE_FLOW_EXIST_CHK,
+                        self.target_sw.send_flow_stats, flow)
+ 
+        target_pkt_count = [self._test(STATE_TARGET_PKT_COUNT, True)]
+        tester_pkt_count = [self._test(STATE_TESTER_PKT_COUNT, False)]
+        
+        # Send packet(s).
+        self._packet_send(self.tester_sw, send_port, pkt)
+            
+        result = self._test(STATE_FLOW_MATCH_CHK, pkt)
+        if result == TIMEOUT:
+            target_pkt_count.append(self._test(
+                                STATE_TARGET_PKT_COUNT, True))
+            tester_pkt_count.append(self._test(
+                                STATE_TESTER_PKT_COUNT, False))
+            test_type = (KEY_EGRESS if KEY_EGRESS in pkt
+                                         else KEY_PKT_IN)
+            self._test(STATE_NO_PKTIN_REASON, test_type,
+                                       target_pkt_count, tester_pkt_count)
 
     def _test_end(self, msg=None, report=None):
         self.test_thread = None
+        self.test_thread_state = THREAD_STATE_READY
         if msg:
             self.logger.info(msg)
-        if report:
-            self._output_test_report(report)
+        #if report:
+        #    self._output_test_report(report)
         #pid = os.getpid()
         #os.kill(pid, signal.SIGTERM)
-
-    def _output_test_report(self, report):
-        self.logger.info('%s--- Test report ---', os.linesep)
-        error_count = 0
-        for result_type in sorted(report.keys()):
-            test_descriptions = report[result_type]
-            if result_type == TEST_OK:
-                continue
-            error_count += len(test_descriptions)
-            self.logger.info('%s(%d)', result_type, len(test_descriptions))
-            for file_desc, test_desc in test_descriptions:
-                self.logger.info('    %-40s %s', file_desc, test_desc)
-        self.logger.info('%s%s(%d) / %s(%d)', os.linesep,
-                         TEST_OK, len(report.get(TEST_OK, [])),
-                         TEST_ERROR, error_count)
 
     def _test(self, state, *args):
         test = {STATE_INIT_FLOW: self._test_initialize_flow,
@@ -651,7 +1148,10 @@ class OfTester(app_manager.RyuApp):
                 STATE_SEND_BARRIER: self._test_send_barrier,
                 STATE_FLOW_UNMATCH_CHK: self._test_flow_unmatching_check,
                 STATE_GET_THROUGHPUT: self._test_get_throughput,
-                STATE_THROUGHPUT_CHK: self._test_throughput_check}
+                STATE_THROUGHPUT_CHK: self._test_throughput_check,
+                STATE_TARGET_FLOWS: self._get_flows_state,
+                STATE_GET_PORT_DESC: self._get_port_desc_state,
+                }
 
         self.send_msg_xids = []
         self.rcv_msgs = []
@@ -659,14 +1159,19 @@ class OfTester(app_manager.RyuApp):
         self.state = state
         return test[state](*args)
 
+    def send_barrier_request(self):
+        """ send a BARRIER_REQUEST message."""
+        parser = self.dp.ofproto_parser
+        req = parser.OFPBarrierRequest(self.dp)
+        return self.send_msg(req)
+
     def _test_initialize_flow(self, datapath, cookie=0):
         xid = datapath.del_flows(cookie)
         self.send_msg_xids.append(xid)
-
         xid = datapath.send_barrier_request()
         self.send_msg_xids.append(xid)
-
         self._wait()
+
         assert len(self.rcv_msgs) == 1
         msg = self.rcv_msgs[0]
         assert isinstance(msg, datapath.dp.ofproto_parser.OFPBarrierReply)
@@ -682,6 +1187,105 @@ class OfTester(app_manager.RyuApp):
         assert len(self.rcv_msgs) == 1
         msg = self.rcv_msgs[0]
         assert isinstance(msg, datapath.dp.ofproto_parser.OFPBarrierReply)
+
+    def _flow_mod_to_rest(self, msg, ofctl):
+        stats = msg
+        actions = ofctl.actions_to_str(stats.instructions)
+        match = ofctl.match_to_str(stats.match)
+
+        flow = {'priority'      : stats.priority,
+                'cookie'        : stats.cookie,
+                'idle_timeout'  : stats.idle_timeout,
+                'hard_timeout'  : stats.hard_timeout,
+                'actions'       : actions,
+                'match'         : match,
+                'table_id'      : stats.table_id,
+                'flags'         : stats.flags}
+        return flow
+
+    def _meter_mod_to_rest(self, ofproto_parser, msg, ofctl):
+        stats = msg
+        bds = []
+        for band in stats.bands:
+            if isinstance(band, ofproto_parser.OFPMeterBandDrop):
+                b = {'burst_size': band.burst_size,
+                    'rate'       : band.rate,
+                    'type'       : band.type }
+            elif isinstance(band,ofproto_parser.OFPMeterBandDscpRemark):
+                b = {'burst_size': band.burst_size,
+                    'rate'       : band.rate,
+                    'prec_level' : band.prec_level}
+            bds.append(b) 
+
+        flow = {'bands'     : bds,
+                'flags'     : stats.flags,
+                'meter_id'  : stats.meter_id}
+        return flow
+
+    def _group_mod_to_rest(self, msg, ofctl):
+        stats = msg
+        bkt = []
+        for bucket in stats.buckets:
+            if isinstance(band, ofproto_parser.OFPBucket):
+                b = {'weight'       : bucket.weight,
+                    'watch_port'    : bucket.watch_port,
+                    'watch_group'   : bucket.watch_group,
+                    'actions'       : bucket.actions}
+                bkt.append(b) 
+
+        flow = {'buckets'   : bkt,
+                'group_id'  : stats.group_id,
+                'type'      : stats.type}
+        return flow
+
+    def _state_flow_to_rest(self, msgs,ofctl):
+        flows = []
+        for msg in msgs:
+            for stats in msg.body:
+                actions = ofctl.actions_to_str(stats.instructions)
+                match = ofctl.match_to_str(stats.match)
+
+                s = {'priority'     : stats.priority,
+                    'cookie'        : stats.cookie,
+                    'idle_timeout'  : stats.idle_timeout,
+                    'hard_timeout'  : stats.hard_timeout,
+                    'actions'       : actions,
+                    'match'         : match,
+                    'byte_count'    : stats.byte_count,
+                    'duration_sec'  : stats.duration_sec,
+                    'duration_nsec' : stats.duration_nsec,
+                    'packet_count'  : stats.packet_count,
+                    'table_id'      : stats.table_id,
+                    'length'        : stats.length,
+                    'flags'         : stats.flags}
+                flows.append(s)
+        return flows
+
+    def _get_flows_state(self, sw, ofctl):
+        method = sw.send_flow_stats
+        parser = method.__self__.dp.ofproto_parser
+        xid = method()
+        self.send_msg_xids.append(xid)
+        self._wait()
+
+        return self._state_flow_to_rest(self.rcv_msgs,ofctl)
+        #return self.rcv_msgs[0].body
+    
+    def _get_port_desc_state(self, sw):
+        method = sw.send_port_desc_stats
+        xid = method()
+        self.send_msg_xids.append(xid)
+        self._wait()
+
+        descs = {}
+        msgs = self.rcv_msgs
+        for msg in msgs: 
+            stats = msg.body
+            for stat in stats:
+                if stat.state == 1: desc = {'state': "DOWN"}
+                else: desc = {'state': "UP"}
+                descs[stat.port_no] = desc
+        return descs
 
     def _test_exist_check(self, method, message):
         parser = method.__self__.dp.ofproto_parser
@@ -724,18 +1328,82 @@ class OfTester(app_manager.RyuApp):
         }
         raise TestFailure(self.state, **error_dict[method.__name__])
 
-    def _test_get_packet_count(self, is_target):
-        sw = self.target_sw if is_target else self.tester_sw
-        xid = sw.send_port_stats()
-        self.send_msg_xids.append(xid)
-        self._wait()
-        result = {}
-        for msg in self.rcv_msgs:
-            for stats in msg.body:
-                result[stats.port_no] = {'rx': stats.rx_packets,
-                                         'tx': stats.tx_packets}
-        return result
 
+    def _compare_flow(self, stats1, stats2):
+        def __reasm_match(match):
+            """ reassemble match_fields. """
+            mask_lengths = {'vlan_vid': 12 + 1,
+                            'ipv6_flabel': 20,
+                            'ipv6_exthdr': 9}
+            match_fields = list()
+            for key, united_value in match.iteritems():
+                if isinstance(united_value, tuple):
+                    (value, mask) = united_value
+                    # look up oxm_fields.TypeDescr to get mask length.
+                    for ofb in stats2.datapath.ofproto.oxm_types:
+                        if ofb.name == key:
+                            # create all one bits mask
+                            mask_len = mask_lengths.get(
+                                key, ofb.type.size * 8)
+                            all_one_bits = 2 ** mask_len - 1
+                            # convert mask to integer
+                            mask_bytes = ofb.type.from_user(mask)
+                            oxm_mask = int(binascii.hexlify(mask_bytes), 16)
+                            # when mask is all one bits, remove mask
+                            if oxm_mask & all_one_bits == all_one_bits:
+                                united_value = value
+                            # when mask is all zero bits, remove field.
+                            elif oxm_mask & all_one_bits == 0:
+                                united_value = None
+                            break
+                if united_value is not None:
+                    match_fields.append((key, united_value))
+            return match_fields
+
+        attr_list = ['cookie', 'priority', 'hard_timeout', 'idle_timeout',
+                     'table_id', 'instructions', 'match']
+        for attr in attr_list:
+            value1 = getattr(stats1, attr)
+            value2 = getattr(stats2, attr)
+            if attr == 'instructions':
+                value1 = sorted(value1)
+                value2 = sorted(value2)
+            elif attr == 'match':
+                value1 = sorted(__reasm_match(value1))
+                value2 = sorted(__reasm_match(value2))
+            if str(value1) != str(value2):
+                flow_stats = []
+                for attr in attr_list:
+                    flow_stats.append('%s=%s' % (attr, getattr(stats1, attr)))
+                return False, 'flow_stats(%s)' % ','.join(flow_stats)
+        return True, None
+    
+    def _compare_meter(self, stats1, stats2):
+        """compare the message used to install and the message got from
+           the switch."""
+        attr_list = ['flags', 'meter_id', 'bands']
+        for attr in attr_list:
+            value1 = getattr(stats1, attr)
+            value2 = getattr(stats2, attr)
+            if str(value1) != str(value2):
+                meter_stats = []
+                for attr in attr_list:
+                    meter_stats.append('%s=%s' % (attr, getattr(stats1, attr)))
+                return False, 'meter_stats(%s)' % ','.join(meter_stats)
+        return True, None
+
+    def _compare_group(self, stats1, stats2):
+        attr_list = ['type', 'group_id', 'buckets']
+        for attr in attr_list:
+            value1 = getattr(stats1, attr)
+            value2 = getattr(stats2, attr)
+            if str(value1) != str(value2):
+                group_stats = []
+                for attr in attr_list:
+                    group_stats.append('%s=%s' % (attr, getattr(stats1, attr)))
+                return False, 'group_stats(%s)' % ','.join(group_stats)
+            return True, None
+    
     def _test_flow_matching_check(self, pkt):
         self.logger.debug("egress:[%s]", packet.Packet(pkt.get(KEY_EGRESS)))
         self.logger.debug("packet_in:[%s]",
@@ -770,16 +1438,15 @@ class OfTester(app_manager.RyuApp):
         model_pkt = (pkt[KEY_EGRESS] if KEY_EGRESS in pkt
                      else pkt[KEY_PKT_IN])
 
-        if hasattr(msg.datapath.ofproto, "OFPR_NO_MATCH"):
-            table_miss_value = msg.datapath.ofproto.OFPR_NO_MATCH
-        else:
-            table_miss_value = msg.datapath.ofproto.OFPR_TABLE_MISS
-
+        #if hasattr(msg.datapath.ofproto, "OFPR_NO_MATCH"):
+        #    table_miss_value = msg.datapath.ofproto.OFPR_NO_MATCH
+        #else:
+        #    table_miss_value = msg.datapath.ofproto.OFPR_TABLE_MISS
         if msg.datapath.id != pkt_in_src_model.dp.id:
             pkt_type = 'packet-in'
             err_msg = 'SW[dpid=%s]' % dpid_lib.dpid_to_str(msg.datapath.id)
-        elif msg.reason == table_miss_value or \
-                msg.reason == msg.datapath.ofproto.OFPR_INVALID_TTL:
+        #elif msg.reason == table_miss_value or \
+        elif msg.reason == msg.datapath.ofproto.OFPR_INVALID_TTL:
             pkt_type = 'packet-in'
             err_msg = 'OFPPacketIn[reason=%d]' % msg.reason
         elif repr(msg.data) != repr(model_pkt):
@@ -787,36 +1454,78 @@ class OfTester(app_manager.RyuApp):
             err_msg = self._diff_packets(packet.Packet(model_pkt),
                                          packet.Packet(msg.data))
         else:
-            return TEST_OK
+            return RESULT_OK
 
         raise TestFailure(self.state, pkt_type=pkt_type,
                           detail=err_msg)
 
+    def _test_get_packet_count(self, is_target):
+        sw = self.target_sw if is_target else self.tester_sw
+        xid = sw.send_port_stats()
+        self.send_msg_xids.append(xid)
+        self._wait()
+        result = {}
+        for msg in self.rcv_msgs:
+            for stats in msg.body:
+                name = "NULL"
+                if self.port_map.has_key(stats.port_no):
+                    name = self.port_map[stats.port_no]
+                result[stats.port_no] = {'name'      : name,
+                                         'rx_packets': stats.rx_packets,
+                                         'tx_packets': stats.tx_packets,
+                                         'rx_bytes'  : stats.rx_bytes,
+                                         'tx_bytes'  : stats.tx_bytes}
+        return result
+
+
+
     def _test_no_pktin_reason_check(self, test_type,
                                     target_pkt_count, tester_pkt_count):
-        before_target_receive = target_pkt_count[
-            0][self.target_recv_port]['rx']
-        before_target_send = target_pkt_count[0][self.target_send_port_1]['tx']
-        before_tester_receive = tester_pkt_count[
-            0][self.tester_recv_port_1]['rx']
-        before_tester_send = tester_pkt_count[0][self.tester_send_port]['tx']
-        after_target_receive = target_pkt_count[1][self.target_recv_port]['rx']
-        after_target_send = target_pkt_count[1][self.target_send_port_1]['tx']
-        after_tester_receive = tester_pkt_count[
-            1][self.tester_recv_port_1]['rx']
-        after_tester_send = tester_pkt_count[1][self.tester_send_port]['tx']
+
+        def _get_value(pkt_count, index, port, opt):
+            return pkt_count[index][port][opt] \
+            if pkt_count[index].has_key(port) else 0
+        # 0 : before / 1 : after
+        before_target_receive = _get_value(
+            target_pkt_count, 0, self.target_recv_port, 'rx_packets')
+
+        before_target_send = _get_value(
+            target_pkt_count, 0, self.target_send_port_1, 'tx_packets')
+
+        before_tester_receive = _get_value(
+            tester_pkt_count, 0, self.tester_recv_port_1, 'rx_packets')
+
+        before_tester_send = _get_value(
+            tester_pkt_count, 0, self.tester_send_port, 'tx_packets')
+
+        after_target_receive = _get_value(
+            target_pkt_count, 1, self.target_recv_port, 'rx_packets')
+        
+        after_target_send = _get_value(
+            target_pkt_count, 1, self.target_send_port_1, 'tx_packets')
+        
+        after_tester_receive = _get_value(
+            tester_pkt_count, 1, self.tester_recv_port_1, 'rx_packets')
+        
+        after_tester_send = _get_value(
+            tester_pkt_count, 1, self.tester_send_port, 'tx_packets')
 
         if after_tester_send == before_tester_send:
-            log_msg = 'no change in tx_packets on tester.'
+            log_msg = 'no send packets on %s(%d).' % (TESTER_SEND_PORT, 
+                                        self.map_port[TESTER_SEND_PORT])
         elif after_target_receive == before_target_receive:
-            log_msg = 'no change in rx_packtes on target.'
+            log_msg = 'no receive packets on %s(%d).' % (TARGET_RECV_PORT,
+                                        self.map_port[TARGET_RECV_PORT])
         elif test_type == KEY_EGRESS:
             if after_target_send == before_target_send:
-                log_msg = 'no change in tx_packets on target.'
+                log_msg = 'no send packets on %s(%d).' % (TARGET_SEND_PORT_1,
+                                        self.map_port[TARGET_SEND_PORT_1])
             elif after_tester_receive == before_tester_receive:
-                log_msg = 'no change in rx_packets on tester.'
+                log_msg = 'no receive packets on %s(%d).' % (TESTER_RECV_PORT_1,
+                                        self.map_port[TESTER_RECV_PORT_1])
             else:
-                log_msg = 'increment in rx_packets in tester.'
+                log_msg = 'receive increment packets on %s(%d).' % (TESTER_RECV_PORT_1,
+                                        self.map_port[TESTER_RECV_PORT_1])
         else:
             assert test_type == KEY_PKT_IN
             log_msg = 'no packet-in.'
@@ -844,6 +1553,7 @@ class OfTester(app_manager.RyuApp):
         assert isinstance(
             msg, self.tester_sw.dp.ofproto_parser.OFPBarrierReply)
 
+
     def _test_flow_unmatching_check(self, before_stats, pkt):
         # Check matched packet count.
         rcv_msgs = self._test_get_match_count()
@@ -859,9 +1569,70 @@ class OfTester(app_manager.RyuApp):
         if not lookup:
             raise TestError(self.state)
 
+    def _test_get_throughput(self):
+        xid = self.tester_sw.send_flow_stats()
+        self.send_msg_xids.append(xid)
+        self._wait()
+
+        assert len(self.rcv_msgs) == 1
+        flow_stats = self.rcv_msgs[0].body
+        self.logger.debug(flow_stats)
+        result = {}
+        for stat in flow_stats:
+            if stat.cookie != THROUGHPUT_COOKIE:
+                continue
+            result[str(stat.match)] = (stat.byte_count, stat.packet_count)
+        return (time.time(), result)
+
+    def _test_throughput_check(self, throughputs, start, end):
+        msgs = []
+        elapsed_sec = end[0] - start[0]
+
+        for throughput in throughputs:
+            match = str(throughput[KEY_FLOW].match)
+            # get oxm_fields of OFPMatch
+            fields = dict(throughput[KEY_FLOW].match._fields2)
+
+            if match not in start[1] or match not in end[1]:
+                raise TestError(self.state, match=match)
+            increased_bytes = end[1][match][0] - start[1][match][0]
+            increased_packets = end[1][match][1] - start[1][match][1]
+
+            if throughput[KEY_PKTPS]:
+                key = KEY_PKTPS
+                conv = 1
+                measured_value = increased_packets
+                unit = 'pktps'
+            elif throughput[KEY_KBPS]:
+                key = KEY_KBPS
+                conv = 1024 / 8  # Kilobits -> bytes
+                measured_value = increased_bytes
+                unit = 'kbps'
+            else:
+                raise RyuException(
+                    'An invalid key exists that is neither "%s" nor "%s".'
+                    % (KEY_KBPS, KEY_PKTPS))
+
+            expected_value = throughput[key] * elapsed_sec * conv
+            margin = expected_value * THROUGHPUT_THRESHOLD
+            self.logger.debug("measured_value:[%s]", measured_value)
+            self.logger.debug("expected_value:[%s]", expected_value)
+            self.logger.debug("margin:[%s]", margin)
+            if math.fabs(measured_value - expected_value) > margin:
+                msgs.append('{0} {1:.2f}{2}'.format(fields,
+                            measured_value / elapsed_sec / conv, unit))
+
+        if msgs:
+            raise TestFailure(self.state, detail=', '.join(msgs))
+    
     def _one_time_packet_send(self, pkt):
         self.logger.debug("send_packet:[%s]", packet.Packet(pkt[KEY_INGRESS]))
         xid = self.tester_sw.send_packet_out(pkt[KEY_INGRESS])
+        self.send_msg_xids.append(xid)
+
+    def _packet_send(self, sw, port, pkt):
+        self.logger.debug("send_packet:[%s]", packet.Packet(pkt[KEY_INGRESS]))
+        xid = sw.send_packet_out_port(pkt[KEY_INGRESS], port)
         self.send_msg_xids.append(xid)
 
     def _continuous_packet_send(self, pkt):
@@ -934,397 +1705,297 @@ class OfTester(app_manager.RyuApp):
                 self.ingress_event.set()
                 break
 
-    def _compare_flow(self, stats1, stats2):
+class TestPatterns(stringify.StringifyMixin):
+    """ The class is used to parse test item of json format. """
+    def __init__(self, map_port, req, logger, parse_tests=True):
+        super(TestPatterns, self).__init__()
+        self.logger = logger
+        self.description = None
+        self.test_items = []
+        self.map_port = map_port
+        self._get_tests(req.test_item, parse_tests)
 
-        def __reasm_match(match):
-            """ reassemble match_fields. """
-            mask_lengths = {'vlan_vid': 12 + 1,
-                            'ipv6_flabel': 20,
-                            'ipv6_exthdr': 9}
-            match_fields = list()
-            for key, united_value in match.iteritems():
-                if isinstance(united_value, tuple):
-                    (value, mask) = united_value
-                    # look up oxm_fields.TypeDescr to get mask length.
-                    for ofb in stats2.datapath.ofproto.oxm_types:
-                        if ofb.name == key:
-                            # create all one bits mask
-                            mask_len = mask_lengths.get(
-                                key, ofb.type.size * 8)
-                            all_one_bits = 2 ** mask_len - 1
-                            # convert mask to integer
-                            mask_bytes = ofb.type.from_user(mask)
-                            oxm_mask = int(binascii.hexlify(mask_bytes), 16)
-                            # when mask is all one bits, remove mask
-                            if oxm_mask & all_one_bits == all_one_bits:
-                                united_value = value
-                            # when mask is all zero bits, remove field.
-                            elif oxm_mask & all_one_bits == 0:
-                                united_value = None
-                            break
-                if united_value is not None:
-                    match_fields.append((key, united_value))
-            return match_fields
+    def _normalize_test_json(self, val):
+        def __replace_port_name(k, v):
+            for port_name in [
+                TARGET_RECV_PORT, TARGET_SEND_PORT_1,
+                TARGET_SEND_PORT_2, TESTER_SEND_PORT,
+                TESTER_RECV_PORT_1, TESTER_RECV_PORT_2]:
+                if v[k] == port_name:
+                    v[k] = self.map_port[port_name]
 
-        attr_list = ['cookie', 'priority', 'hard_timeout', 'idle_timeout',
-                     'table_id', 'instructions', 'match']
-        for attr in attr_list:
-            value1 = getattr(stats1, attr)
-            value2 = getattr(stats2, attr)
-            if attr == 'instructions':
-                value1 = sorted(value1)
-                value2 = sorted(value2)
-            elif attr == 'match':
-                value1 = sorted(__reasm_match(value1))
-                value2 = sorted(__reasm_match(value2))
-            if str(value1) != str(value2):
-                flow_stats = []
-                for attr in attr_list:
-                    flow_stats.append('%s=%s' % (attr, getattr(stats1, attr)))
-                return False, 'flow_stats(%s)' % ','.join(flow_stats)
-        return True, None
+        if isinstance(val, dict):
+            for k, v in val.iteritems():
+                if k == "OFPActionOutput":
+                    if 'port' in v:
+                        __replace_port_name("port", v)
+                elif k == "OXMTlv":
+                    if v.get("field", "") == "in_port":
+                        __replace_port_name("value", v)
+                self._normalize_test_json(v)
+        elif isinstance(val, list):
+            for v in val:
+                self._normalize_test_json(v)
 
-    def _compare_meter(self, stats1, stats2):
-        """compare the message used to install and the message got from
-           the switch."""
-        attr_list = ['flags', 'meter_id', 'bands']
-        for attr in attr_list:
-            value1 = getattr(stats1, attr)
-            value2 = getattr(stats2, attr)
-            if str(value1) != str(value2):
-                meter_stats = []
-                for attr in attr_list:
-                    meter_stats.append('%s=%s' % (attr, getattr(stats1, attr)))
-                return False, 'meter_stats(%s)' % ','.join(meter_stats)
-        return True, None
-
-    def _compare_group(self, stats1, stats2):
-        attr_list = ['type', 'group_id', 'buckets']
-        for attr in attr_list:
-            value1 = getattr(stats1, attr)
-            value2 = getattr(stats2, attr)
-            if str(value1) != str(value2):
-                group_stats = []
-                for attr in attr_list:
-                    group_stats.append('%s=%s' % (attr, getattr(stats1, attr)))
-                return False, 'group_stats(%s)' % ','.join(group_stats)
-            return True, None
-
-    def _diff_packets(self, model_pkt, rcv_pkt):
-        msg = []
-        for rcv_p in rcv_pkt.protocols:
-            if type(rcv_p) != str:
-                model_protocols = model_pkt.get_protocols(type(rcv_p))
-                if len(model_protocols) == 1:
-                    model_p = model_protocols[0]
-                    diff = []
-                    for attr in rcv_p.__dict__:
-                        if attr.startswith('_'):
-                            continue
-                        if callable(attr):
-                            continue
-                        if hasattr(rcv_p.__class__, attr):
-                            continue
-                        rcv_attr = repr(getattr(rcv_p, attr))
-                        model_attr = repr(getattr(model_p, attr))
-                        if rcv_attr != model_attr:
-                            diff.append('%s=%s' % (attr, rcv_attr))
-                    if diff:
-                        msg.append('%s(%s)' %
-                                   (rcv_p.__class__.__name__,
-                                    ','.join(diff)))
-                else:
-                    if (not model_protocols or
-                            not str(rcv_p) in str(model_protocols)):
-                        msg.append(str(rcv_p))
-            else:
-                model_p = ''
-                for p in model_pkt.protocols:
-                    if type(p) == str:
-                        model_p = p
-                        break
-                if model_p != rcv_p:
-                    msg.append('str(%s)' % repr(rcv_p))
-        if msg:
-            return '/'.join(msg)
-        else:
-            return ('Encounter an error during packet comparison.'
-                    ' it is malformed.')
-
-    def _test_get_throughput(self):
-        xid = self.tester_sw.send_flow_stats()
-        self.send_msg_xids.append(xid)
-        self._wait()
-
-        assert len(self.rcv_msgs) == 1
-        flow_stats = self.rcv_msgs[0].body
-        self.logger.debug(flow_stats)
-        result = {}
-        for stat in flow_stats:
-            if stat.cookie != THROUGHPUT_COOKIE:
-                continue
-            result[str(stat.match)] = (stat.byte_count, stat.packet_count)
-        return (time.time(), result)
-
-    def _test_throughput_check(self, throughputs, start, end):
-        msgs = []
-        elapsed_sec = end[0] - start[0]
-
-        for throughput in throughputs:
-            match = str(throughput[KEY_FLOW].match)
-            # get oxm_fields of OFPMatch
-            fields = dict(throughput[KEY_FLOW].match._fields2)
-
-            if match not in start[1] or match not in end[1]:
-                raise TestError(self.state, match=match)
-            increased_bytes = end[1][match][0] - start[1][match][0]
-            increased_packets = end[1][match][1] - start[1][match][1]
-
-            if throughput[KEY_PKTPS]:
-                key = KEY_PKTPS
-                conv = 1
-                measured_value = increased_packets
-                unit = 'pktps'
-            elif throughput[KEY_KBPS]:
-                key = KEY_KBPS
-                conv = 1024 / 8  # Kilobits -> bytes
-                measured_value = increased_bytes
-                unit = 'kbps'
-            else:
-                raise RyuException(
-                    'An invalid key exists that is neither "%s" nor "%s".'
-                    % (KEY_KBPS, KEY_PKTPS))
-
-            expected_value = throughput[key] * elapsed_sec * conv
-            margin = expected_value * THROUGHPUT_THRESHOLD
-            self.logger.debug("measured_value:[%s]", measured_value)
-            self.logger.debug("expected_value:[%s]", expected_value)
-            self.logger.debug("margin:[%s]", margin)
-            if math.fabs(measured_value - expected_value) > margin:
-                msgs.append('{0} {1:.2f}{2}'.format(fields,
-                            measured_value / elapsed_sec / conv, unit))
-
-        if msgs:
-            raise TestFailure(self.state, detail=', '.join(msgs))
-
-    def _wait(self):
-        """ Wait until specific OFP message received
-             or timer is exceeded. """
-        assert self.waiter is None
-
-        self.waiter = hub.Event()
-        self.rcv_msgs = []
-        timeout = False
-
-        timer = hub.Timeout(WAIT_TIMER)
+    def _get_tests(self, item, parse_tests):
         try:
-            self.waiter.wait()
-        except hub.Timeout as t:
-            if t is not timer:
-                raise RyuException('Internal error. Not my timeout.')
-            timeout = True
-        finally:
-            timer.cancel()
+            json_list = item
+            for test_json in json_list:
+                if isinstance(test_json, unicode):
+                    self.description = test_json
+                else:
+                    self._normalize_test_json(test_json)
+                      
+                    self.test_items.append(TestItem(self.map_port, 
+                                            test_json,
+                                            parse_tests))
+        except (ValueError, TypeError) as e:
+            result = (TEST_ITEM_ERROR %
+                          {'detail': e.message})
+            self.logger.warning(result)
+            raise e
 
-        self.waiter = None
+class TestItem(stringify.StringifyMixin):
+    def __init__(self, map_port, test_json, parse_tests):
+        super(TestItem, self).__init__()
+        self.parse_tests = parse_tests
+        self.map_port = map_port
+        (self.description,
+         self.prerequisite,
+         self.tests,
+         self.tests_str) = self._parse_test(test_json)
 
-        if timeout:
-            raise TestTimeout(self.state)
-        if (self.rcv_msgs and isinstance(
-                self.rcv_msgs[0],
-                self.rcv_msgs[0].datapath.ofproto_parser.OFPErrorMsg)):
-            raise TestReceiveError(self.state, self.rcv_msgs[0])
+    def _parse_test(self, buf):
+        def _decode_list(data):
+            rv = []
+            for item in data:
+                if isinstance(item, unicode):
+                    item = item.encode('utf-8')
+                elif isinstance(item, list):
+                    item = _decode_list(item)
+                elif isinstance(item, dict):
+                    item = _decode_dict(item)
+                rv.append(item)
+            return rv
 
-    @set_ev_cls([ofp_event.EventOFPFlowStatsReply,
-                 ofp_event.EventOFPMeterConfigStatsReply,
-                 ofp_event.EventOFPTableStatsReply,
-                 ofp_event.EventOFPPortStatsReply,
-                 ofp_event.EventOFPGroupDescStatsReply],
-                handler.MAIN_DISPATCHER)
-    def stats_reply_handler(self, ev):
-        # keys: stats reply event classes
-        # values: states in which the events should be processed
-        event_states = {
-            ofp_event.EventOFPFlowStatsReply:
-                [STATE_FLOW_EXIST_CHK,
-                 STATE_THROUGHPUT_FLOW_EXIST_CHK,
-                 STATE_GET_THROUGHPUT],
-            ofp_event.EventOFPMeterConfigStatsReply:
-                [STATE_METER_EXIST_CHK],
-            ofp_event.EventOFPTableStatsReply:
-                [STATE_GET_MATCH_COUNT,
-                 STATE_FLOW_UNMATCH_CHK],
-            ofp_event.EventOFPPortStatsReply:
-                [STATE_TARGET_PKT_COUNT,
-                 STATE_TESTER_PKT_COUNT],
-            ofp_event.EventOFPGroupDescStatsReply:
-                [STATE_GROUP_EXIST_CHK]
-        }
-        if self.state in event_states[ev.__class__]:
-            if self.waiter and ev.msg.xid in self.send_msg_xids:
-                self.rcv_msgs.append(ev.msg)
-                if not ev.msg.flags & \
-                        ev.msg.datapath.ofproto.OFPMPF_REPLY_MORE:
-                    self.waiter.set()
-                    hub.sleep(0)
+        def _decode_dict(data):
+            rv = {}
+            for key, value in data.iteritems():
+                if isinstance(key, unicode):
+                    key = key.encode('utf-8')
+                if isinstance(value, unicode):
+                    value = value.encode('utf-8')
+                elif isinstance(value, list):
+                    value = _decode_list(value)
+                elif isinstance(value, dict):
+                    value = _decode_dict(value)
+                rv[key] = value
+            return rv
 
-    @set_ev_cls(ofp_event.EventOFPBarrierReply, handler.MAIN_DISPATCHER)
-    def barrier_reply_handler(self, ev):
-        state_list = [STATE_INIT_FLOW,
-                      STATE_INIT_THROUGHPUT_FLOW,
-                      STATE_INIT_METER,
-                      STATE_INIT_GROUP,
-                      STATE_FLOW_INSTALL,
-                      STATE_THROUGHPUT_FLOW_INSTALL,
-                      STATE_METER_INSTALL,
-                      STATE_GROUP_INSTALL,
-                      STATE_SEND_BARRIER]
-        if self.state in state_list:
-            if self.waiter and ev.msg.xid in self.send_msg_xids:
-                self.rcv_msgs.append(ev.msg)
-                self.waiter.set()
-                hub.sleep(0)
+        def __test_pkt_from_json(test):
+            data = eval('/'.join(test))
+            data.serialize()
+            return str(data.data)
 
-    @set_ev_cls(ofp_event.EventOFPPacketIn, handler.MAIN_DISPATCHER)
-    def packet_in_handler(self, ev):
-        datapath = ev.msg.datapath
-        if datapath.id != self.target_dpid and datapath.id != self.tester_dpid:
-            return
+        def __test_pkt_str_from_json(test):
+            return _decode_list(test)
 
-        state_list = [STATE_FLOW_MATCH_CHK]
-        if self.state in state_list:
-            if self.waiter:
-                self.rcv_msgs.append(ev.msg)
-                self.waiter.set()
-                hub.sleep(0)
+        def __normalize_match(ofproto, match):
+            match_json = match.to_jsondict()
+            oxm_fields = match_json['OFPMatch']['oxm_fields']
+            fields = []
+            for field in oxm_fields:
+                field_obj = ofproto.oxm_from_jsondict(field)
+                field_obj = ofproto.oxm_normalize_user(*field_obj)
+                fields.append(field_obj)
+            return match.__class__(_ordered_fields=fields)
 
-    @set_ev_cls(ofp_event.EventOFPErrorMsg, [handler.HANDSHAKE_DISPATCHER,
-                                             handler.CONFIG_DISPATCHER,
-                                             handler.MAIN_DISPATCHER])
-    def error_msg_handler(self, ev):
-        if ev.msg.xid in self.send_msg_xids:
-            self.rcv_msgs.append(ev.msg)
-            if self.waiter:
-                self.waiter.set()
-                hub.sleep(0)
+        def __normalize_action(ofproto, action):
+            action_json = action.to_jsondict()
+            field = action_json['OFPActionSetField']['field']
+            field_obj = ofproto.oxm_from_jsondict(field)
+            field_obj = ofproto.oxm_normalize_user(*field_obj)
+            kwargs = {}
+            kwargs[field_obj[0]] = field_obj[1]
+            return action.__class__(**kwargs)
 
-    
+        def __replace_port_name(desc):
+            for port_name in [
+                TARGET_RECV_PORT, TARGET_SEND_PORT_1,
+                TARGET_SEND_PORT_2, TESTER_SEND_PORT,
+                TESTER_RECV_PORT_1, TESTER_RECV_PORT_2]:
+                desc = desc.replace(port_name, str(self.map_port[port_name]))
+            return desc
+                
+        # get ofproto modules using user-specified versions
+        (target_ofproto, target_parser) = ofproto_protocol._versions[
+            OfTester.target_ver]
+        (tester_ofproto, tester_parser) = ofproto_protocol._versions[
+            OfTester.tester_ver]
+        target_dp = DummyDatapath()
+        target_dp.ofproto = target_ofproto
+        target_dp.ofproto_parser = target_parser
+        tester_dp = DummyDatapath()
+        tester_dp.ofproto = tester_ofproto
+        tester_dp.ofproto_parser = tester_parser
 
-    # by jesse
-    @set_ev_cls(rest_event.EventTestItemRequest)
-    def test_request_handler(self, req):
-        self.start_thread(req)
+        # parse 'description'
+        description = __replace_port_name(
+                            buf.get(KEY_DESC))
 
-    def synchronized(func):
-        func.__lock__ = threading.Lock()
-        def synced_func(*args, **kws):
-            with func.__lock__:
-              return func(*args, **kws)
-        return synced_func  
+        # parse 'prerequisite'
+        prerequisite = []
 
-    @synchronized
-    def start_thread(self, req):
-        status = START_OK
-        description = "START_OK"
-        if  self.test_thread == None:
-            self.logger.info('--- Test start ---')
-            self._init(req)
-            self.test_thread = hub.spawn(
-                  self._test_item_execute, req)
+        if KEY_PREREQ not in buf:
+            raise ValueError('a test requires a "%s" block' % KEY_PREREQ)
 
-            if self.test_thread == None:
-              status = START_ERROR
-              description = "START_ERROR"
+        allowed_mod = [KEY_FLOW, KEY_METER, KEY_GROUP]
+        for flow in buf[KEY_PREREQ]:
+            key, value = flow.popitem()
+            if key not in allowed_mod:
+                raise ValueError(
+                    '"%s" block allows only the followings: %s' % (
+                        KEY_PREREQ, allowed_mod))
+            cls = getattr(target_parser, key)
+            msg = cls.from_jsondict(value, datapath=target_dp)
+            msg.version = target_ofproto.OFP_VERSION
+            msg.msg_type = msg.cls_msg_type
+            msg.xid = 0
+            if isinstance(msg, target_parser.OFPFlowMod):
+                # normalize OFPMatch
+                msg.match = __normalize_match(target_ofproto, msg.match)
+                # normalize OFPActionSetField
+                insts = []
+                for inst in msg.instructions:
+                    if isinstance(inst, target_parser.OFPInstructionActions):
+                        acts = []
+                        for act in inst.actions:
+                            if isinstance(
+                                    act, target_parser.OFPActionSetField):
+                                act = __normalize_action(target_ofproto, act)
+                            acts.append(act)
+                        inst = target_parser.OFPInstructionActions(
+                            inst.type, actions=acts)
+                    insts.append(inst)
+                msg.instructions = insts
+            elif isinstance(msg, target_parser.OFPGroupMod):
+                # normalize OFPActionSetField
+                buckets = []
+                for bucket in msg.buckets:
+                    acts = []
+                    for act in bucket.actions:
+                        if isinstance(act, target_parser.OFPActionSetField):
+                            act = __normalize_action(target_ofproto, act)
+                        acts.append(act)
+                    bucket = target_parser.OFPBucket(
+                        weight=bucket.weight,
+                        watch_port=bucket.watch_port,
+                        watch_group=bucket.watch_group,
+                        actions=acts)
+                    buckets.append(bucket)
+                msg.buckets = buckets
+            msg.serialize()
+            prerequisite.append(msg)
 
-            else :
-              stauts = START_OK
-              description = "START_OK"
-        else :
-            status = START_RUNNING
-            description = "START_RUNNING"
-        
-        rep = rest_event.EventTestItemReply(req.src, status, description,
-                              dpid_lib.dpid_to_str(self.target_dpid))
-        self.reply_to_request(req, rep)
+        if self.parse_tests == False:
+            return (description, prerequisite, [])
 
+        # parse 'tests'
+        tests = []
+        tests_str = []
+        if KEY_TESTS not in buf:
+            raise ValueError('a test requires a "%s" block.' % KEY_TESTS)
 
-    def _init(self, req) :
-        self.evnet_ofp_state_change = None
-        self.state = STATE_INIT_FLOW
-        self.sw_waiter = None
-        self.waiter = None
-        self.send_msg_xids = []
-        self.rcv_msgs = []
-        self.ingress_event = None
-        self.ingress_threads = []
-        self.thread_msg = None
-        self.result_list = []
-        self.test_item = None
-  
-        self.target_dpid = req.target_dpid
-        self.target_recv_port =  req.target_recv_port
-        self.target_send_port_1 = req.target_send_port_1
-        self.target_send_port_2 = req.target_send_port_2
-            
-        self.tester_dpid = req.tester_dpid
-        self.tester_send_port = req.tester_send_port
-        self.tester_recv_port_1 = req.tester_recv_port1
-        self.tester_recv_port_2 = req.tester_recv_port2
-        self.logger.info('target_dpid=%s',
-                        dpid_lib.dpid_to_str(self.target_dpid))
+        for test in buf[KEY_TESTS]:
+            if len(test) != 2:
+                raise ValueError(
+                    '"%s" block requires "%s" field and one of "%s" or "%s"'
+                    ' or "%s" field.' % (KEY_TESTS, KEY_INGRESS, KEY_EGRESS,
+                                         KEY_PKT_IN, KEY_TBL_MISS))
+            test_pkt = {}
+            test_pkt_str = {}
+            # parse 'ingress'
+            if KEY_INGRESS not in test:
+                raise ValueError('a test requires "%s" field.' % KEY_INGRESS)
+            if isinstance(test[KEY_INGRESS], list):
+                test_pkt[KEY_INGRESS] = __test_pkt_from_json(test[KEY_INGRESS])
+                test_pkt_str[KEY_INGRESS] = __test_pkt_str_from_json(test[KEY_INGRESS])
+            elif isinstance(test[KEY_INGRESS], dict):
+                test_pkt[KEY_PACKETS] = {
+                    'packet_text': test[KEY_INGRESS][KEY_PACKETS][KEY_DATA],
+                    'packet_binary': __test_pkt_from_json(
+                        test[KEY_INGRESS][KEY_PACKETS][KEY_DATA]),
+                    KEY_DURATION_TIME: test[KEY_INGRESS][KEY_PACKETS].get(
+                        KEY_DURATION_TIME, DEFAULT_DURATION_TIME),
+                    KEY_PKTPS: test[KEY_INGRESS][KEY_PACKETS].get(
+                        KEY_PKTPS, DEFAULT_PKTPS),
+                    'randomize': True in [
+                        line.find('randint') != -1
+                        for line in test[KEY_INGRESS][KEY_PACKETS][KEY_DATA]]}
+                
+                test_pkt_str[KEY_PACKETS] = {
+                    'packet_text': test[KEY_INGRESS][KEY_PACKETS][KEY_DATA],
+                    'packet_binary': __test_pkt_str_from_json(
+                        test[KEY_INGRESS][KEY_PACKETS][KEY_DATA]),
+                    KEY_DURATION_TIME: test[KEY_INGRESS][KEY_PACKETS].get(
+                        KEY_DURATION_TIME, DEFAULT_DURATION_TIME),
+                    KEY_PKTPS: test[KEY_INGRESS][KEY_PACKETS].get(
+                        KEY_PKTPS, DEFAULT_PKTPS),
+                    'randomize': True in [
+                        line.find('randint') != -1
+                        for line in test[KEY_INGRESS][KEY_PACKETS][KEY_DATA]]}
+                
+            else:
+                raise ValueError('invalid format: "%s" field' % KEY_INGRESS)
+            # parse 'egress' or 'PACKET_IN' or 'table-miss'
+            if KEY_EGRESS in test:
+                if isinstance(test[KEY_EGRESS], list):
+                    test_pkt[KEY_EGRESS] = __test_pkt_from_json(
+                        test[KEY_EGRESS])
+                    test_pkt_str[KEY_EGRESS] = __test_pkt_str_from_json(
+                        test[KEY_EGRESS])
+                elif isinstance(test[KEY_EGRESS], dict):
+                    throughputs = []
+                    for throughput in test[KEY_EGRESS][KEY_THROUGHPUT]:
+                        one = {}
+                        mod = {'match': {'OFPMatch': throughput[KEY_MATCH]}}
+                        cls = getattr(tester_parser, KEY_FLOW)
+                        msg = cls.from_jsondict(
+                            mod, datapath=tester_dp,
+                            cookie=THROUGHPUT_COOKIE,
+                            priority=THROUGHPUT_PRIORITY)
+                        msg.match = __normalize_match(
+                            tester_ofproto, msg.match)
+                        one[KEY_FLOW] = msg
+                        one[KEY_KBPS] = throughput.get(KEY_KBPS)
+                        one[KEY_PKTPS] = throughput.get(KEY_PKTPS)
+                        if not bool(one[KEY_KBPS]) != bool(one[KEY_PKTPS]):
+                            raise ValueError(
+                                '"%s" requires either "%s" or "%s".' % (
+                                    KEY_THROUGHPUT, KEY_KBPS, KEY_PKTPS))
+                        throughputs.append(one)
+                    test_pkt[KEY_THROUGHPUT] = throughputs
+                else:
+                    raise ValueError('invalid format: "%s" field' % KEY_EGRESS)
+            elif KEY_PKT_IN in test:
+                test_pkt[KEY_PKT_IN] = __test_pkt_from_json(test[KEY_PKT_IN])
+                test_pkt_str[KEY_PKT_IN] = __test_pkt_str_from_json(test[KEY_PKT_IN])
+            elif KEY_TBL_MISS in test:
+                test_pkt[KEY_TBL_MISS] = test[KEY_TBL_MISS]
 
-        self.logger.info('tester_dpid=%s',
-                        dpid_lib.dpid_to_str(self.tester_dpid))
+            tests.append(test_pkt)
+            tests_str.append(test_pkt_str)
 
-        target_opt = req.target_version
-        self.logger.info('target ofp version=%s', target_opt)
-        OfTester.target_ver = self._get_version(target_opt)
-        tester_opt = req.tester_version
-        self.logger.info('tester ofp version=%s', tester_opt)
-        OfTester.tester_ver = self._get_version(tester_opt)
-          
-        # set app_supported_versions later.
-        ofproto_protocol.set_app_supported_versions(
-                  [OfTester.target_ver, OfTester.tester_ver])
+        return (description, prerequisite, tests, tests_str)
 
-        self.target_sw = OpenFlowSw(DummyDatapath(), self.logger)
-        self.tester_sw = OpenFlowSw(DummyDatapath(), self.logger)
-          
-        for key in self.connected_list.keys() :
-            dp = self.connected_list[key]
-            self._unregister_sw(dp)
-            self._register_sw(dp)
-
-    def _test_item_execute(self, req) :
-      self.test_thread_state = "running"
-      json_list = TestItem(req.test_item, self.logger)
-      self._test_file_execute(json_list)
-      self.test_thread_state = "idle"
-      self._test_end(msg='---  Test end  ---', report=None)
-
-    # by jesse
-    @set_ev_cls(rest_event.EventTestItemResultRequest)
-    def get_request_handler(self, req):
-        rep = rest_event.EventTestItemResultReply(req.src, self.result_list, 
-                              self.target_dpid,self.test_thread_state, self.test_item)
-        self.reply_to_request(req, rep)
-
-    # by jesse
-    @set_ev_cls(rest_event.EventTestItemStopRequest)
-    def stop_request_handler(self, req):
-        self.close()
-        self.test_thread_state = "idle"
-        self._test_end(msg='---  Test stop  ---', report=None)
-        rep = rest_event.EventTestItemStopReply(req.src, self.test_thread_state)
-        self.reply_to_request(req, rep)
 
 class OpenFlowSw(object):
 
-    def __init__(self, dp, logger):
+    def __init__(self, dp, logger, req):
         super(OpenFlowSw, self).__init__()
         self.dp = dp
         self.logger = logger
-        self.tester_send_port = CONF['test-switch']['tester_send_port']
+        self.tester_send_port = req.tester_send_port
 
     def send_msg(self, msg):
         if isinstance(self.dp, DummyDatapath):
@@ -1334,7 +2005,7 @@ class OpenFlowSw(object):
         self.dp.send_msg(msg)
         return msg.xid
 
-    def add_flow(self, in_port=None, out_port=None):
+    def get_flow(self, in_port=None, out_port=None):
         """ Add flow. """
 
         ofp = self.dp.ofproto
@@ -1349,7 +2020,8 @@ class OpenFlowSw(object):
         mod = parser.OFPFlowMod(self.dp, cookie=0,
                                 command=ofp.OFPFC_ADD,
                                 match=match, instructions=inst)
-        return self.send_msg(mod)
+        return mod
+        #return self.send_msg(mod)
 
     def del_flows(self, cookie=0):
         """ Delete all flow except default flow. """
@@ -1402,7 +2074,34 @@ class OpenFlowSw(object):
         req = parser.OFPPortStatsRequest(self.dp, flags, ofp.OFPP_ANY)
         return self.send_msg(req)
 
+    def send_port_desc_stats(self):
+        """ Get port stats."""
+        ofp = self.dp.ofproto
+        parser = self.dp.ofproto_parser
+        flags = 0
+        req = parser.OFPPortDescStatsRequest(self.dp, 0)
+        return self.send_msg(req)
+
     def send_flow_stats(self):
+        """ Get all flow. """
+        ofp = self.dp.ofproto
+        parser = self.dp.ofproto_parser
+        req = parser.OFPFlowStatsRequest(self.dp, 0, ofp.OFPTT_ALL,
+                                         ofp.OFPP_ANY, ofp.OFPG_ANY,
+                                         0, 0, parser.OFPMatch())
+        return self.send_msg(req)
+
+
+    def send_flow_stats_for_target(self, cookie):
+        """ Get all flow. """
+        ofp = self.dp.ofproto
+        parser = self.dp.ofproto_parser
+        req = parser.OFPFlowStatsRequest(self.dp, 0, ofp.OFPTT_ALL,
+                                         ofp.OFPP_ANY, ofp.OFPG_ANY,
+                                         0, 0, parser.OFPMatch())
+        return self.send_msg(req)
+
+    def send_flow_stats_for_tester(self, cookie):
         """ Get all flow. """
         ofp = self.dp.ofproto
         parser = self.dp.ofproto_parser
@@ -1436,296 +2135,17 @@ class OpenFlowSw(object):
         out = parser.OFPPacketOut(
             datapath=self.dp, buffer_id=ofp.OFP_NO_BUFFER,
             data=data, in_port=ofp.OFPP_CONTROLLER, actions=actions)
-        return self.send_msg(out)
+        return self.send_msg(out) 
 
-
-class TestPatterns(dict):
-    """ List of Test class objects. """
-    def __init__(self, test_dir, logger):
-        super(TestPatterns, self).__init__()
-        self.logger = logger
-        # Parse test pattern from test files.
-        self._get_tests(test_dir)
-
-    def _get_tests(self, path):
-        if not os.path.exists(path):
-            msg = INVALID_PATH % {'path': path}
-            self.logger.warning(msg)
-            return
-
-        if os.path.isdir(path):  # Directory
-            for test_path in os.listdir(path):
-                test_path = path + (test_path if path[-1:] == '/'
-                                    else '/%s' % test_path)
-                self._get_tests(test_path)
-
-        elif os.path.isfile(path):  # File
-            (dummy, ext) = os.path.splitext(path)
-            if ext == '.json':
-                test = TestFile(path, self.logger)
-                self[test.description] = test
-
-# by jesse
-class TestItem(stringify.StringifyMixin):
-    """Test File object include Test objects."""
-    def __init__(self, item, logger):
-        super(TestItem, self).__init__()
-        self.logger = logger
-        self.description = None
-        self.tests = []
-        self._get_tests(item)
-
-    def _normalize_test_json(self, val):
-        def __replace_port_name(k, v):
-            for port_name in [
-                'target_recv_port', 'target_send_port_1',
-                'target_send_port_2', 'tester_send_port',
-                    'tester_recv_port_1', 'tester_recv_port_2']:
-                if v[k] == port_name:
-                    v[k] = CONF['test-switch'][port_name]
-        if isinstance(val, dict):
-            for k, v in val.iteritems():
-                if k == "OFPActionOutput":
-                    if 'port' in v:
-                        __replace_port_name("port", v)
-                elif k == "OXMTlv":
-                    if v.get("field", "") == "in_port":
-                        __replace_port_name("value", v)
-                self._normalize_test_json(v)
-        elif isinstance(val, list):
-            for v in val:
-                self._normalize_test_json(v)
-
-    def _get_tests(self, item):
-            try:
-                json_list = item
-                for test_json in json_list:
-                    if isinstance(test_json, unicode):
-                        self.description = test_json
-                    else:
-                        self._normalize_test_json(test_json)
-                      
-                        self.tests.append(Test(test_json))
-            except (ValueError, TypeError) as e:
-                result = (TEST_ITEM_ERROR %
-                          {'detail': e.message})
-                self.logger.warning(result)
-                self.logger.warning(buf)
-
-class TestFile(stringify.StringifyMixin):
-    """Test File object include Test objects."""
-    def __init__(self, path, logger):
-        super(TestFile, self).__init__()
-        self.logger = logger
-        self.description = None
-        self.tests = []
-        self._get_tests(path)
-
-    def _normalize_test_json(self, val):
-        def __replace_port_name(k, v):
-            for port_name in [
-                'target_recv_port', 'target_send_port_1',
-                'target_send_port_2', 'tester_send_port',
-                    'tester_recv_port_1', 'tester_recv_port_2']:
-                if v[k] == port_name:
-                    v[k] = CONF['test-switch'][port_name]
-        if isinstance(val, dict):
-            for k, v in val.iteritems():
-                if k == "OFPActionOutput":
-                    if 'port' in v:
-                        __replace_port_name("port", v)
-                elif k == "OXMTlv":
-                    if v.get("field", "") == "in_port":
-                        __replace_port_name("value", v)
-                self._normalize_test_json(v)
-        elif isinstance(val, list):
-            for v in val:
-                self._normalize_test_json(v)
-
-    def _get_tests(self, path):
-        with open(path, 'rb') as fhandle:
-            buf = fhandle.read()
-            try:
-                json_list = json.loads(buf)
-                for test_json in json_list:
-                    if isinstance(test_json, unicode):
-                        self.description = test_json
-                    else:
-                        self._normalize_test_json(test_json)
-                        self.tests.append(Test(test_json))
-            except (ValueError, TypeError) as e:
-                result = (TEST_FILE_ERROR %
-                          {'file': path, 'detail': e.message})
-                self.logger.warning(result)
-
-
-class Test(stringify.StringifyMixin):
-    def __init__(self, test_json):
-        super(Test, self).__init__()
-        (self.description,
-         self.prerequisite,
-         self.tests) = self._parse_test(test_json)
-
-    def _parse_test(self, buf):
-        def __test_pkt_from_json(test):
-            data = eval('/'.join(test))
-            data.serialize()
-            return str(data.data)
-
-        def __normalize_match(ofproto, match):
-            match_json = match.to_jsondict()
-            oxm_fields = match_json['OFPMatch']['oxm_fields']
-            fields = []
-            for field in oxm_fields:
-                field_obj = ofproto.oxm_from_jsondict(field)
-                field_obj = ofproto.oxm_normalize_user(*field_obj)
-                fields.append(field_obj)
-            return match.__class__(_ordered_fields=fields)
-
-        def __normalize_action(ofproto, action):
-            action_json = action.to_jsondict()
-            field = action_json['OFPActionSetField']['field']
-            field_obj = ofproto.oxm_from_jsondict(field)
-            field_obj = ofproto.oxm_normalize_user(*field_obj)
-            kwargs = {}
-            kwargs[field_obj[0]] = field_obj[1]
-            return action.__class__(**kwargs)
-
-        # get ofproto modules using user-specified versions
-        (target_ofproto, target_parser) = ofproto_protocol._versions[
-            OfTester.target_ver]
-        (tester_ofproto, tester_parser) = ofproto_protocol._versions[
-            OfTester.tester_ver]
-        target_dp = DummyDatapath()
-        target_dp.ofproto = target_ofproto
-        target_dp.ofproto_parser = target_parser
-        tester_dp = DummyDatapath()
-        tester_dp.ofproto = tester_ofproto
-        tester_dp.ofproto_parser = tester_parser
-
-        # parse 'description'
-        description = buf.get(KEY_DESC)
-
-        # parse 'prerequisite'
-        prerequisite = []
-        if KEY_PREREQ not in buf:
-            raise ValueError('a test requires a "%s" block' % KEY_PREREQ)
-        allowed_mod = [KEY_FLOW, KEY_METER, KEY_GROUP]
-        for flow in buf[KEY_PREREQ]:
-            key, value = flow.popitem()
-            if key not in allowed_mod:
-                raise ValueError(
-                    '"%s" block allows only the followings: %s' % (
-                        KEY_PREREQ, allowed_mod))
-            cls = getattr(target_parser, key)
-            msg = cls.from_jsondict(value, datapath=target_dp)
-            msg.version = target_ofproto.OFP_VERSION
-            msg.msg_type = msg.cls_msg_type
-            msg.xid = 0
-            if isinstance(msg, target_parser.OFPFlowMod):
-                # normalize OFPMatch
-                msg.match = __normalize_match(target_ofproto, msg.match)
-                # normalize OFPActionSetField
-                insts = []
-                for inst in msg.instructions:
-                    if isinstance(inst, target_parser.OFPInstructionActions):
-                        acts = []
-                        for act in inst.actions:
-                            if isinstance(
-                                    act, target_parser.OFPActionSetField):
-                                act = __normalize_action(target_ofproto, act)
-                            acts.append(act)
-                        inst = target_parser.OFPInstructionActions(
-                            inst.type, actions=acts)
-                    insts.append(inst)
-                msg.instructions = insts
-            elif isinstance(msg, target_parser.OFPGroupMod):
-                # normalize OFPActionSetField
-                buckets = []
-                for bucket in msg.buckets:
-                    acts = []
-                    for act in bucket.actions:
-                        if isinstance(act, target_parser.OFPActionSetField):
-                            act = __normalize_action(target_ofproto, act)
-                        acts.append(act)
-                    bucket = target_parser.OFPBucket(
-                        weight=bucket.weight,
-                        watch_port=bucket.watch_port,
-                        watch_group=bucket.watch_group,
-                        actions=acts)
-                    buckets.append(bucket)
-                msg.buckets = buckets
-            msg.serialize()
-            prerequisite.append(msg)
-
-        # parse 'tests'
-        tests = []
-        if KEY_TESTS not in buf:
-            raise ValueError('a test requires a "%s" block.' % KEY_TESTS)
-
-        for test in buf[KEY_TESTS]:
-            if len(test) != 2:
-                raise ValueError(
-                    '"%s" block requires "%s" field and one of "%s" or "%s"'
-                    ' or "%s" field.' % (KEY_TESTS, KEY_INGRESS, KEY_EGRESS,
-                                         KEY_PKT_IN, KEY_TBL_MISS))
-            test_pkt = {}
-            # parse 'ingress'
-            if KEY_INGRESS not in test:
-                raise ValueError('a test requires "%s" field.' % KEY_INGRESS)
-            if isinstance(test[KEY_INGRESS], list):
-                test_pkt[KEY_INGRESS] = __test_pkt_from_json(test[KEY_INGRESS])
-            elif isinstance(test[KEY_INGRESS], dict):
-                test_pkt[KEY_PACKETS] = {
-                    'packet_text': test[KEY_INGRESS][KEY_PACKETS][KEY_DATA],
-                    'packet_binary': __test_pkt_from_json(
-                        test[KEY_INGRESS][KEY_PACKETS][KEY_DATA]),
-                    KEY_DURATION_TIME: test[KEY_INGRESS][KEY_PACKETS].get(
-                        KEY_DURATION_TIME, DEFAULT_DURATION_TIME),
-                    KEY_PKTPS: test[KEY_INGRESS][KEY_PACKETS].get(
-                        KEY_PKTPS, DEFAULT_PKTPS),
-                    'randomize': True in [
-                        line.find('randint') != -1
-                        for line in test[KEY_INGRESS][KEY_PACKETS][KEY_DATA]]}
-            else:
-                raise ValueError('invalid format: "%s" field' % KEY_INGRESS)
-            # parse 'egress' or 'PACKET_IN' or 'table-miss'
-            if KEY_EGRESS in test:
-                if isinstance(test[KEY_EGRESS], list):
-                    test_pkt[KEY_EGRESS] = __test_pkt_from_json(
-                        test[KEY_EGRESS])
-                elif isinstance(test[KEY_EGRESS], dict):
-                    throughputs = []
-                    for throughput in test[KEY_EGRESS][KEY_THROUGHPUT]:
-                        one = {}
-                        mod = {'match': {'OFPMatch': throughput[KEY_MATCH]}}
-                        cls = getattr(tester_parser, KEY_FLOW)
-                        msg = cls.from_jsondict(
-                            mod, datapath=tester_dp,
-                            cookie=THROUGHPUT_COOKIE,
-                            priority=THROUGHPUT_PRIORITY)
-                        msg.match = __normalize_match(
-                            tester_ofproto, msg.match)
-                        one[KEY_FLOW] = msg
-                        one[KEY_KBPS] = throughput.get(KEY_KBPS)
-                        one[KEY_PKTPS] = throughput.get(KEY_PKTPS)
-                        if not bool(one[KEY_KBPS]) != bool(one[KEY_PKTPS]):
-                            raise ValueError(
-                                '"%s" requires either "%s" or "%s".' % (
-                                    KEY_THROUGHPUT, KEY_KBPS, KEY_PKTPS))
-                        throughputs.append(one)
-                    test_pkt[KEY_THROUGHPUT] = throughputs
-                else:
-                    raise ValueError('invalid format: "%s" field' % KEY_EGRESS)
-            elif KEY_PKT_IN in test:
-                test_pkt[KEY_PKT_IN] = __test_pkt_from_json(test[KEY_PKT_IN])
-            elif KEY_TBL_MISS in test:
-                test_pkt[KEY_TBL_MISS] = test[KEY_TBL_MISS]
-
-            tests.append(test_pkt)
-
-        return (description, prerequisite, tests)
-
+    def send_packet_out_port(self, data, port):
+        """ send a PacketOut message."""
+        ofp = self.dp.ofproto
+        parser = self.dp.ofproto_parser
+        actions = [parser.OFPActionOutput(port)]
+        out = parser.OFPPacketOut(
+            datapath=self.dp, buffer_id=ofp.OFP_NO_BUFFER,
+            data=data, in_port=ofp.OFPP_CONTROLLER, actions=actions)
+        return self.send_msg(out) 
 
 class DummyDatapath(object):
     def __init__(self):

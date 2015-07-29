@@ -1,0 +1,44 @@
+1. 描述： 只使用一台機器測試
+2. 接法：
+
+                      +-------------------------+
+           +----------|     target sw           | The switch to be tested
+           |          +-------------------------+
+    +------------+      (1) (2) (3) (4) (5) (6)
+    | controller |       |   |   |   |   |   |
+    +------------+       -----   -----   -----
+           
+--------TEST STEP--------
+1. start mininet
+#cd ryu/mininet_sample; ./sample_mn_tester3.py
+
+2. start ryu
+#ryu-manager ryu.app.ys_rest_tests
+
+3. get test item status
+curl http://127.0.0.1:8080/tests/switch/item
+
+4. stop test item
+curl -X DELETE http://127.0.0.1:8080/tests/switch/item
+
+5. start test item
+curl -X POST -d '{"tester_version":"openflow13","tester_dpid":1,"tester_send_port":1,"tester_recv_port_1":3,"tester_recv_port_2":6,"target_version":"openflow13","target_dpid":1,"target_recv_port":2,"target_send_port_1":4,"target_send_port_2":5,"test_item":["action: 00_OUTPUT",{"description":"ethernet/ipv4/tcp-->'actions=output:2'","prerequisite":[{"OFPFlowMod":{"table_id":0,"instructions":[{"OFPInstructionActions":{"actions":[{"OFPActionOutput":{"port":2}}],"type":4}}]}}],"tests":[{"ingress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=2048)","ipv4(tos=32, proto=6, src='192.168.10.10', dst='192.168.20.20', ttl=64)","tcp(dst_port=2222, option=str('\\\\x00' * 4), src_port=11111)","'\\\\x01\\\\x02\\\\x03\\\\x04\\\\x05\\\\x06\\\\x07\\\\x08\\\\t\\\\n\\\\x0b\\\\x0c\\\\r\\\\x0e\\\\x0f\\\\x10\\\\x11\\\\x12\\\\x13\\\\x14\\\\x15\\\\x16\\\\x17\\\\x18\\\\x19\\\\x1a\\\\x1b\\\\x1c\\\\x1d\\\\x1e\\\\x1f'"],"egress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=2048)","ipv4(tos=32, proto=6, src='192.168.10.10', dst='192.168.20.20', ttl=64)","tcp(dst_port=2222, option=str('\\\\x00' * 4), src_port=11111)","'\\\\x01\\\\x02\\\\x03\\\\x04\\\\x05\\\\x06\\\\x07\\\\x08\\\\t\\\\n\\\\x0b\\\\x0c\\\\r\\\\x0e\\\\x0f\\\\x10\\\\x11\\\\x12\\\\x13\\\\x14\\\\x15\\\\x16\\\\x17\\\\x18\\\\x19\\\\x1a\\\\x1b\\\\x1c\\\\x1d\\\\x1e\\\\x1f'"]}]}]}' http://127.0.0.1:8080/tests/switch/item
+
+6. get test flowentry status
+curl http://127.0.0.1:8080/tests/switch/item/flowentry
+
+7. stop test flowentry 
+curl -X DELETE http://127.0.0.1:8080/tests/switch/item/flowentry
+
+8. start test flowentry
+curl -X POST -d '{"tester_version":"openflow13","tester_dpid":1,"tester_send_port":1,"tester_recv_port_1":3,"tester_recv_port_2":6,"target_version":"openflow13","target_dpid":1,"target_recv_port":2,"target_send_port_1":4,"target_send_port_2":5,"test_item":["action: 00_OUTPUT",{"description":"ethernet/ipv4/tcp-->'actions=output:2'","prerequisite":[{"OFPFlowMod":{"table_id":0,"instructions":[{"OFPInstructionActions":{"actions":[{"OFPActionOutput":{"port":2}}],"type":4}}]}}],"tests":[{"ingress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=2048)","ipv4(tos=32, proto=6, src='192.168.10.10', dst='192.168.20.20', ttl=64)","tcp(dst_port=2222, option=str('\\\\x00' * 4), src_port=11111)","'\\\\x01\\\\x02\\\\x03\\\\x04\\\\x05\\\\x06\\\\x07\\\\x08\\\\t\\\\n\\\\x0b\\\\x0c\\\\r\\\\x0e\\\\x0f\\\\x10\\\\x11\\\\x12\\\\x13\\\\x14\\\\x15\\\\x16\\\\x17\\\\x18\\\\x19\\\\x1a\\\\x1b\\\\x1c\\\\x1d\\\\x1e\\\\x1f'"],"egress":["ethernet(dst='22:22:22:22:22:22', src='12:11:11:11:11:11', ethertype=2048)","ipv4(tos=32, proto=6, src='192.168.10.10', dst='192.168.20.20', ttl=64)","tcp(dst_port=2222, option=str('\\\\x00' * 4), src_port=11111)","'\\\\x01\\\\x02\\\\x03\\\\x04\\\\x05\\\\x06\\\\x07\\\\x08\\\\t\\\\n\\\\x0b\\\\x0c\\\\r\\\\x0e\\\\x0f\\\\x10\\\\x11\\\\x12\\\\x13\\\\x14\\\\x15\\\\x16\\\\x17\\\\x18\\\\x19\\\\x1a\\\\x1b\\\\x1c\\\\x1d\\\\x1e\\\\x1f'"]}]}]}' http://127.0.0.1:8080/tests/switch/item
+
+9. get test link status
+curl http://127.0.0.1:8080/tests/switch/check/link
+
+10. stop test link 
+curl -X DELETE http://127.0.0.1:8080/tests/switch/check/link
+
+11. start test link
+curl -X POST -d '{"tester_version":"openflow13","tester_dpid":1,"tester_send_port":1,"tester_recv_port_1":3,"tester_recv_port_2":6,"target_version":"openflow13","target_dpid":1,"target_recv_port":2,"target_send_port_1":4,"target_send_port_2":5}' http://127.0.0.1:8080/tests/switch/check/link
+
