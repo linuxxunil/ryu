@@ -882,11 +882,17 @@ OFPET_METER_MOD_FAILED = 12         # Error in meter.
 OFPET_TABLE_FEATURES_FAILED = 13    # Setting table features failed.
 OFPET_EXPERIMENTER = 0xffff         # Experimenter error messages.
 
-# enum ofp_hello_failed_code
+# enum ofp_hello_failed_code (0)
 OFPHFC_INCOMPATIBLE = 0     # No compatible version.
 OFPHFC_EPERM = 1            # Permissions error.
 
-# enum ofp_bad_request_code
+OFP_HFC = {
+    "type" : "Hello protocol failed.",
+    OFPHFC_INCOMPATIBLE : "No compatible version.",
+    OFPHFC_EPERM        : "Permissions error."
+}
+
+# enum ofp_bad_request_code (1)
 OFPBRC_BAD_VERSION = 0                  # ofp_header.version not supported.
 OFPBRC_BAD_TYPE = 1                     # ofp_header.type not supported.
 OFPBRC_BAD_MULTIPART = 2                # ofp_multipart_request.type not
@@ -909,7 +915,26 @@ OFPBRC_BAD_PACKET = 12                  # Invalid packet in packet-out
 OFPBRC_MULTIPART_BUFFER_OVERFLOW = 13   # ofp_multipart_request
                                         # overflowed the assigned buffer.
 
-# enum ofp_bad_action_code
+OFP_BRC = {
+    "type" : "Request was not understood.",
+    OFPBRC_BAD_VERSION      : "ofp_header.version not supported.",
+    OFPBRC_BAD_TYPE         : "ofp_header.type not supported.",
+    OFPBRC_BAD_MULTIPART    : "ofp_multipart_request.type not supported.",
+    OFPBRC_BAD_EXPERIMENTER : "Experimenter id not supported (in ofp_experimenter_header \
+                                or ofp_multipart_request or ofp_multipart_reply).",
+    OFPBRC_BAD_EXP_TYPE     : "Experimenter type not supported.",
+    OFPBRC_EPERM            : "Permissions error.",
+    OFPBRC_BAD_LEN          : "Wrong request length for type.",
+    OFPBRC_BUFFER_EMPTY     : "Specified buffer has already been used.",
+    OFPBRC_BUFFER_UNKNOWN   : "Specified buffer does not exist.",
+    OFPBRC_BAD_TABLE_ID     : "Specified table-id invalid or does not exist.",
+    OFPBRC_IS_SLAVE         : "Denied because controller is slave.",
+    OFPBRC_BAD_PORT         : "Invalid port.",
+    OFPBRC_BAD_PACKET       : "Invalid packet in packet-out",
+    OFPBRC_MULTIPART_BUFFER_OVERFLOW : "ofp_multipart_request overflowed the assigned buffer."
+}
+
+# enum ofp_bad_action_code (2)
 OFPBAC_BAD_TYPE = 0             # Unknown action type.
 OFPBAC_BAD_LEN = 1              # Length problem in actions.
 OFPBAC_BAD_EXPERIMENTER = 2     # Unknown experimenter id specified.
@@ -930,7 +955,28 @@ OFPBAC_BAD_SET_TYPE = 13        # Unsupported type in SET_FIELD action.
 OFPBAC_BAD_SET_LEN = 14         # Length problem in SET_FIELD action.
 OFPBAC_BAD_SET_ARGUMENT = 15    # Bad arguement in SET_FIELD action.
 
-# enum ofp_bad_instruction_code
+OFP_BAC = {
+    "type" : "Error in action description.",
+    OFPBAC_BAD_TYPE         : "Unknown action type.",
+    OFPBAC_BAD_LEN          : "Length problem in actions.",
+    OFPBAC_BAD_EXPERIMENTER : "Unknown experimenter id specified.",
+    OFPBAC_BAD_EXP_TYPE     : "Unknown action type for experimenter id.",
+    OFPBAC_BAD_OUT_PORT     : "Problem validating output action.",
+    OFPBAC_BAD_ARGUMENT     : "Bad action argument.",
+    OFPBAC_EPERM            : "Permissions error.",
+    OFPBAC_TOO_MANY         : "Can't handle this many actions.",
+    OFPBAC_BAD_QUEUE        : "Problem validating output queue.",
+    OFPBAC_BAD_OUT_GROUP    : "Invalid group id in forward action.",
+    OFPBAC_MATCH_INCONSISTENT : "Action can't apply for this match, or Set-Field missing prerequisite.",
+    OFPBAC_UNSUPPORTED_ORDER  : "Action order is unsupported for the action list \
+                                in an Apply-Actions instruction",
+    OFPBAC_BAD_TAG            : "Actions uses an unsupported tag/encap.",
+    OFPBAC_BAD_SET_TYPE       : "Unsupported type in SET_FIELD action.",
+    OFPBAC_BAD_SET_LEN        : "Length problem in SET_FIELD action.",
+    OFPBAC_BAD_SET_ARGUMENT   : "Bad arguement in SET_FIELD action."
+}
+
+# enum ofp_bad_instruction_code (3)
 OFPBIC_UNKNOWN_INST = 0         # Unknown instruction.
 OFPBIC_UNSUP_INST = 1           # Switch or table does not support
                                 # the instruction.
@@ -943,7 +989,20 @@ OFPBIC_BAD_EXP_TYPE = 6         # Unknown instruction for experimenter id.
 OFPBIC_BAD_LEN = 7              # Length problem in instrucitons.
 OFPBIC_EPERM = 8                # Permissions error.
 
-# enum ofp_bad_match_code
+OFP_BIC = {
+    "type"                      : "Error in instruction list.",
+    OFPBIC_UNKNOWN_INST         : "Unknown instruction.",
+    OFPBIC_UNSUP_INST           : "Switch or table does not support the instruction.",
+    OFPBIC_BAD_TABLE_ID         : "Invalid Table-Id specified",
+    OFPBIC_UNSUP_METADATA       : "Metadata value unsupported by datapath.",
+    OFPBIC_UNSUP_METADATA_MASK  : "Metadata mask value unsupported by datapath.",
+    OFPBIC_BAD_EXPERIMENTER     : "Unknown experimenter id specified.",
+    OFPBIC_BAD_EXP_TYPE         : "Unknown instruction for experimenter id.",
+    OFPBIC_BAD_LEN              : "Length problem in instrucitons.",
+    OFPBIC_EPERM                : "Permissions error."
+}
+
+# enum ofp_bad_match_code (4)
 OFPBMC_BAD_TYPE = 0             # Unsupported match type apecified by
                                 # the match.
 OFPBMC_BAD_LEN = 1              # Length problem in math.
@@ -964,7 +1023,28 @@ OFPBMC_BAD_PREREQ = 9           # A prerequisite was not met.
 OFPBMC_DUP_FIELD = 10           # A field type was duplicated.
 OFPBMC_EPERM = 11               # Permissions error.
 
-# enum ofp_flow_mod_failed_code
+OFP_BMC = {
+    "type"                  : "Error in match.",
+    OFPBMC_BAD_TYPE         : "Unsupported match type apecified by the match.",
+    OFPBMC_BAD_LEN          : "Length problem in math.",
+    OFPBMC_BAD_TAG          : "Match uses an unsupported tag/encap.",
+    OFPBMC_BAD_DL_ADDR_MASK : "Unsupported datalink addr mask - \
+                                switch does not support arbitrary \
+                                datalink address mask.",
+    OFPBMC_BAD_NW_ADDR_MASK : "Unsupported network addr mask - \
+                                switch does not support arbitrary \
+                                network addres mask.",
+    OFPBMC_BAD_WILDCARDS    : "Unsupported combination of fields \
+                                masked or omitted in the match.",
+    OFPBMC_BAD_FIELD        : "Unsupported field type in the match.",
+    OFPBMC_BAD_VALUE        : "Unsupported value in a match field.",
+    OFPBMC_BAD_MASK         : "Unsupported mask specified in the match.",
+    OFPBMC_BAD_PREREQ       : "A prerequisite was not met.",
+    OFPBMC_DUP_FIELD        : "A field type was duplicated.",
+    OFPBMC_EPERM            : "Permissions error."
+}
+
+# enum ofp_flow_mod_failed_code (5)
 OFPFMFC_UNKNOWN = 0             # Unspecified error.
 OFPFMFC_TABLE_FULL = 1          # Flow not added because table was full.
 OFPFMFC_BAD_TABLE_ID = 2        # Table does not exist
@@ -976,7 +1056,22 @@ OFPFMFC_BAD_TIMEOUT = 5         # Flow not added because of
 OFPFMFC_BAD_COMMAND = 6         # Unsupported or unknown command.
 OFPFMFC_BAD_FLAGS = 7           # Unsupported or unknown flags.
 
-# enum ofp_group_mod_failed_code
+OFP_FMFC = {
+    "type"              : "Problem modifying flow entry.",
+    OFPFMFC_UNKNOWN     : "Unspecified error.",
+    OFPFMFC_TABLE_FULL  : "Flow not added because table was full.",
+    OFPFMFC_BAD_TABLE_ID: "Table does not exist",
+    OFPFMFC_OVERLAP     : "Attempted to add overlapping flow \
+                            with CHECK_OVERLAP flag set.",
+    OFPFMFC_EPERM       : "Permissions error.",
+    OFPFMFC_BAD_TIMEOUT : "Flow not added because of \
+                            unsupported idle/hard timeout.",
+    OFPFMFC_BAD_COMMAND : "Unsupported or unknown command.",
+    OFPFMFC_BAD_FLAGS   : "Unsupported or unknown flags."
+
+}
+
+# enum ofp_group_mod_failed_code (6)
 OFPGMFC_GROUP_EXISTS = 0
 OFPGMFC_INVALID_GROUP = 1
 OFPGMFC_WEIGHT_UNSUPPORTED = 2      # Switch does not support unequal load
@@ -1000,7 +1095,33 @@ OFPGMFC_BAD_BUCKET = 12             # Error in bucket.
 OFPGMFC_BAD_WATCH = 13              # Error in watch port/group.
 OFPGMFC_EPERM = 14                  # Permissions error.
 
-# enum ofp_port_mod_failed_code
+OFP_GMFC = {
+    "type"                      : "Problem modifying group entry.",
+    OFPGMFC_GROUP_EXISTS        : "Group exists.",
+    OFPGMFC_INVALID_GROUP       : "Invalid group",
+    OFPGMFC_WEIGHT_UNSUPPORTED  : "Switch does not support unequal load \
+                                    sharing with select groups.",
+    OFPGMFC_OUT_OF_GROUPS       : "The group table is full.",
+    OFPGMFC_OUT_OF_BUCKETS      : "The maximum number of action buckets \
+                                    for a group has been exceeded.",
+    OFPGMFC_CHAINING_UNSUPPORTED: "Switch does not support groups that \
+                                    forward to groups.",
+    OFPGMFC_WATCH_UNSUPPORTED   : "This group cannot watch the \
+                                    watch_port or watch_group specified.",
+    OFPGMFC_LOOP                : "Group entry would cause a loop.",
+    OFPGMFC_UNKNOWN_GROUP       : "Group not modified because a group \
+                                    MODIFY attempted to modify a \
+                                    non-existent group.",
+    OFPGMFC_CHAINED_GROUP       : "Group not deleted because another \
+                                    group is forwarding to it.",
+    OFPGMFC_BAD_TYPE            : "Unsupported or unknown group type.",
+    OFPGMFC_BAD_COMMAND         : "Unsupported or unknown command.",
+    OFPGMFC_BAD_BUCKET          : "Error in bucket.",
+    OFPGMFC_BAD_WATCH           : "Error in watch port/group.",
+    OFPGMFC_EPERM               : "Permissions error."
+}
+
+# enum ofp_port_mod_failed_code (7)
 OFPPMFC_BAD_PORT = 0        # Specified port does not exist.
 OFPPMFC_BAD_HW_ADDR = 1     # Specified hardware address does not
                             # match the port number.
@@ -1008,31 +1129,70 @@ OFPPMFC_BAD_CONFIG = 2      # Specified config is invalid.
 OFPPMFC_BAD_ADVERTISE = 3   # Specified advertise is invalid.
 OFPPMFC_EPERM = 4           # Permissions error.
 
-# enum ofp_table_mod_failed_code
+
+OFP_PMFC = {
+    "type"                      : "OFPT_PORT_MOD failed.",
+    OFPPMFC_BAD_PORT            : "Specified port does not exist.",
+    OFPPMFC_BAD_HW_ADDR         : "Specified hardware address does not \
+                                    match the port number.",
+    OFPPMFC_BAD_CONFIG          : "Specified config is invalid.",
+    OFPPMFC_BAD_ADVERTISE       : "Specified advertise is invalid.",
+    OFPPMFC_EPERM               : "Permissions error."
+}
+
+# enum ofp_table_mod_failed_code (8)
 OFPTMFC_BAD_TABLE = 0       # Specified table does not exist.
 OFPTMFC_BAD_CONFIG = 1      # Specified config is invalid.
 OFPTMFC_EPERM = 2           # Permissions error
 
-# enum ofp_queue_op_failed_code
+OFP_TMFC = {
+    "type"                      : "Table mod request failed.",
+    OFPTMFC_BAD_TABLE           : "Specified table does not exist.",
+    OFPTMFC_BAD_CONFIG          : "Specified config is invalid.",
+    OFPTMFC_EPERM               : "Permissions error"
+}
+
+# enum ofp_queue_op_failed_code (9)
 OFPQOFC_BAD_PORT = 0        # Invalid port (or port does not exist).
 OFPQOFC_BAD_QUEUE = 1       # Queue does not exist.
 OFPQOFC_EPERM = 2           # Permissions error.
-
-# enum ofp_switch_config_failed_code
-OFPSCFC_BAD_FLAGS = 0       # Specified flags is invalid.
-OFPSCFC_BAD_LEN = 1         # Specified len is invalid.
 OFPQCFC_EPERM = 2           # Permissions error (depracated).
                             # New or updated Ryu applications shall use
                             # OFPSCFC_EPERM. The variable name is a typo of
                             # in specifications before v1.3.1 (EXT-208).
+
+OFP_QOFC = {
+    "type"                      : "Queue operation failed.",
+    OFPQOFC_BAD_PORT            : "Invalid port (or port does not exist).",
+    OFPQOFC_BAD_QUEUE           : "Queue does not exist.",
+    OFPQOFC_EPERM               : "Permissions error."
+}
+
+# enum ofp_switch_config_failed_code (10)
+OFPSCFC_BAD_FLAGS = 0       # Specified flags is invalid.
+OFPSCFC_BAD_LEN = 1         # Specified len is invalid.
 OFPSCFC_EPERM = 2           # Permissions error.
 
-# enum ofp_role_request_failed_code
+OFP_SCFC = {
+    "type"                      : "Switch config request failed.",
+    OFPSCFC_BAD_FLAGS           : "Specified flags is invalid.",
+    OFPSCFC_BAD_LEN             : "Specified len is invalid.",
+    OFPSCFC_EPERM               : "Permissions error."
+}
+
+# enum ofp_role_request_failed_code (11)
 OFPRRFC_STALE = 0           # Stale Message: old generation_id.
 OFPRRFC_UNSUP = 1           # Controller role change unsupported.
 OFPRRFC_BAD_ROLE = 2        # Invalid role.
 
-# enum ofp_meter_mod_failed_code
+OFP_RRFC = {
+    "type"                      : "Controller Role request failed.",
+    OFPRRFC_STALE               : "Stale Message: old generation_id.",
+    OFPRRFC_UNSUP               : "Controller role change unsupported.",
+    OFPRRFC_BAD_ROLE            : "Invalid role."
+}
+
+# enum ofp_meter_mod_failed_code (12)
 OFPMMFC_UNKNOWN = 0         # Unspecified error.
 OFPMMFC_METER_EXISTS = 1    # Meter not added because a Meter ADD
                             # attempted to replace an existing Meter.
@@ -1051,13 +1211,46 @@ OFPMMFC_OUT_OF_METERS = 10  # No more meters availabile.
 OFPMMFC_OUT_OF_BANDS = 11   # The maximum number of properties
                             # for a meter has been exceeded.
 
-# enum ofp_table_features_failed_code
-OFPTFFC_BAD_TABLE = 0       # Specified table does not exist.
+OFP_MMFC = {
+    "type"                      : "Error in meter.",
+    OFPMMFC_UNKNOWN             : "Unspecified error.",
+    OFPMMFC_METER_EXISTS        : "Meter not added because a Meter ADD \
+                                    attempted to replace an existing Meter.",
+    OFPMMFC_INVALID_METER       : "Meter not added because Meter specified \
+                                    is invalid.",
+    OFPMMFC_UNKNOWN_METER       : "Meter not modified because a Meter \
+                                    MODIFY attempted to modify a non-existent \
+                                    Meter.",
+    OFPMMFC_BAD_COMMAND         : "Unsupported or unknown command.",
+    OFPMMFC_BAD_FLAGS           : "Flag configuration unsupported.",
+    OFPMMFC_BAD_RATE            : "Rate unsupported.",
+    OFPMMFC_BAD_BURST           : "Burst size unsupported.",
+    OFPMMFC_BAD_BAND            : "Band unsupported.",
+    OFPMMFC_BAD_BAND_VALUE      : "Band value unsupported.",
+    OFPMMFC_OUT_OF_METERS       : "No more meters availabile.",
+    OFPMMFC_OUT_OF_BANDS        : "The maximum number of properties \
+                                    for a meter has been exceeded."
+}
+
+# enum ofp_table_features_failed_code (13)
+OFPTFFC_BAD_TABLE  = 0      # Specified table does not exist.
 OFPTFFC_BAD_METADATA = 1    # Invalid metadata mask.
 OFPTFFC_BAD_TYPE = 2        # Unknown property type.
 OFPTFFC_BAD_LEN = 3         # Length problem in properties.
 OFPTFFC_BAD_ARGUMENT = 4    # Unsupported property value.
 OFPTFFC_EPERM = 5           # Permissions error.
+
+
+OFP_TFFC = {
+    "type"                      : "Setting table features failed.",
+    OFPTFFC_BAD_TABLE           : "Specified table does not exist.",
+    OFPTFFC_BAD_METADATA        : "Invalid metadata mask.",
+    OFPTFFC_BAD_TYPE            : "Unknown property type.",
+    OFPTFFC_BAD_LEN             : "Length problem in properties.",
+    OFPTFFC_BAD_ARGUMENT        : "Unsupported property value.",
+    OFPTFFC_EPERM               : "Permissions error."
+}
+
 
 # struct ofp_error_experimenter_msg
 OFP_ERROR_EXPERIMENTER_MSG_PACK_STR = '!HHI'
@@ -1096,6 +1289,24 @@ ONFERR_ET_ASYNC_EPERM = 2372
 ONFERR_DUP_INSTRUCTION = 2600   # the lack of _ET_ is per spec
 ONFERR_ET_MPART_REQUEST_TIMEOUT = 2640
 ONFERR_ET_MPART_REPLY_TIMEOUT = 2641
+
+OFP_ERR_TYPE_STR = {
+    OFPET_HELLO_FAILED          : OFP_HFC,
+    OFPET_BAD_REQUEST           : OFP_BRC,
+    OFPET_BAD_ACTION            : OFP_BAC,
+    OFPET_BAD_INSTRUCTION       : OFP_BIC,
+    OFPET_BAD_MATCH             : OFP_BMC,
+    OFPET_FLOW_MOD_FAILED       : OFP_FMFC,
+    OFPET_GROUP_MOD_FAILED      : OFP_GMFC,
+    OFPET_PORT_MOD_FAILED       : OFP_PMFC,
+    OFPET_TABLE_MOD_FAILED      : OFP_TMFC,
+    OFPET_QUEUE_OP_FAILED       : OFP_QOFC,
+    OFPET_SWITCH_CONFIG_FAILED  : OFP_SCFC,
+    OFPET_ROLE_REQUEST_FAILED   : OFP_RRFC,
+    OFPET_METER_MOD_FAILED      : OFP_MMFC,
+    OFPET_TABLE_FEATURES_FAILED : OFP_TFFC,
+    OFPET_EXPERIMENTER          :   "Experimenter error messages."
+}
 
 # struct ofp_hello
 OFP_HELLO_HEADER_SIZE = 8
