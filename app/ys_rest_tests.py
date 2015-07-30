@@ -206,7 +206,6 @@ class TestsController(ControllerBase):
            methods=['POST'])
     def _do_test_flowentry(self, req, **kwargs):
         content = json.loads(req.body) if req.body else {}
-        print yaml.safe_load(content)
         result  = do_test_item(self.test_api_app, content, False)
         body = json.dumps(result)
         return Response(content_type='application/json', body=body)

@@ -1898,7 +1898,7 @@ class TestItem(stringify.StringifyMixin):
             prerequisite.append(msg)
 
         if self.parse_tests == False:
-            return (description, prerequisite, [])
+            return (description, prerequisite, [], [])
 
         # parse 'tests'
         tests = []
