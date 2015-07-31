@@ -104,6 +104,7 @@ INTERVAL = 1  # sec
 WAIT_TIMER = 3  # sec
 CONTINUOUS_THREAD_INTVL = float(0.01)  # sec
 CONTINUOUS_PROGRESS_SPAN = 3  # sec
+TESTER_PRIORITY = ofproto_v1_3.OFP_DEFAULT_PRIORITY + 11
 THROUGHPUT_PRIORITY = ofproto_v1_3.OFP_DEFAULT_PRIORITY + 1
 THROUGHPUT_COOKIE = THROUGHPUT_PRIORITY
 THROUGHPUT_THRESHOLD = float(0.10)  # expected throughput plus/minus 10 %
@@ -879,12 +880,13 @@ class OfTester(app_manager.RyuApp):
             self._test(STATE_INIT_METER)
             self._test(STATE_INIT_GROUP)
             self._test(STATE_INIT_FLOW, self.target_sw)
-            flow = self.target_sw.get_flow(
+            flow = self.tester_sw.get_flow(
                 in_port=self.tester_recv_port_1,
-                out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER)
-            self._test(STATE_FLOW_INSTALL, self.target_sw, flow )
+                out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER,
+                priority=TESTER_PRIORITY)
+            self._test(STATE_FLOW_INSTALL, self.tester_sw, flow )
             self._test(STATE_FLOW_EXIST_CHK,
-                        self.target_sw.send_flow_stats, flow)
+                        self.tester_sw.send_flow_stats, flow)
 
             self._test(STATE_INIT_THROUGHPUT_FLOW, self.tester_sw,
                                     THROUGHPUT_COOKIE)
@@ -1095,10 +1097,11 @@ class OfTester(app_manager.RyuApp):
         # Install flow to tester
         flow = self.target_sw.get_flow(
             in_port=recv_port,
-            out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER)
-        self._test(STATE_FLOW_INSTALL, self.target_sw, flow )
+            out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER,
+            priority=TESTER_PRIORITY)
+        self._test(STATE_FLOW_INSTALL, self.tester_sw, flow )
         self._test(STATE_FLOW_EXIST_CHK,
-                        self.target_sw.send_flow_stats, flow)
+                        self.tester_sw.send_flow_stats, flow)
  
         target_pkt_count = [self._test(STATE_TARGET_PKT_COUNT, True)]
         tester_pkt_count = [self._test(STATE_TESTER_PKT_COUNT, False)]
@@ -2005,7 +2008,7 @@ class OpenFlowSw(object):
         self.dp.send_msg(msg)
         return msg.xid
 
-    def get_flow(self, in_port=None, out_port=None):
+    def get_flow(self, in_port=None, out_port=None, priority=None):
         """ Add flow. """
 
         ofp = self.dp.ofproto
@@ -2017,7 +2020,13 @@ class OpenFlowSw(object):
         actions = [parser.OFPActionOutput(out_port, max_len)]
         inst = [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS,
                                              actions)]
-        mod = parser.OFPFlowMod(self.dp, cookie=0,
+        if priority == None:
+            mod = parser.OFPFlowMod(self.dp, cookie=0,
+                                command=ofp.OFPFC_ADD,
+                                match=match, instructions=inst)
+        else:
+            mod = parser.OFPFlowMod(self.dp, cookie=0,
+                                priority=priority,
                                 command=ofp.OFPFC_ADD,
                                 match=match, instructions=inst)
         return mod
