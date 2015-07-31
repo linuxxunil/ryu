@@ -808,7 +808,7 @@ class OfTester(app_manager.RyuApp):
                 {"STATUS": "NO TEST", "INFO":"target_recv_port<->tester_send_port"},
                 {"STATUS": "NO TEST", "INFO":"tester_recv_port_1<->target_send_port_1"},
                 {"STATUS": "NO TEST", "INFO":"tester_recv_port_2<->target_send_port_2"}]
-            
+
             i=i+1
             self._check_send_port(self.target_recv_port, 
                                         self.tester_send_port)
@@ -1118,7 +1118,7 @@ class OfTester(app_manager.RyuApp):
             test_type = (KEY_EGRESS if KEY_EGRESS in pkt
                                          else KEY_PKT_IN)
             self._test(STATE_NO_PKTIN_REASON, test_type,
-                                       target_pkt_count, tester_pkt_count)
+                                       target_pkt_count, tester_pkt_count, send_port)
 
     def _test_end(self, msg=None, report=None):
         self.test_thread = None
@@ -1483,7 +1483,8 @@ class OfTester(app_manager.RyuApp):
 
 
     def _test_no_pktin_reason_check(self, test_type,
-                                    target_pkt_count, tester_pkt_count):
+                                    target_pkt_count, tester_pkt_count,
+                                    send_port=None):
 
         def _get_value(pkt_count, index, port, opt):
             return pkt_count[index][port][opt] \
@@ -1492,46 +1493,84 @@ class OfTester(app_manager.RyuApp):
         before_target_receive = _get_value(
             target_pkt_count, 0, self.target_recv_port, 'rx_packets')
 
-        before_target_send = _get_value(
+        before_target_send_1 = _get_value(
             target_pkt_count, 0, self.target_send_port_1, 'tx_packets')
 
-        before_tester_receive = _get_value(
+        before_tester_receive_1 = _get_value(
             tester_pkt_count, 0, self.tester_recv_port_1, 'rx_packets')
 
         before_tester_send = _get_value(
             tester_pkt_count, 0, self.tester_send_port, 'tx_packets')
 
+        before_target_send_2 = _get_value(
+            target_pkt_count, 0, self.target_send_port_2, 'tx_packets')
+
+        before_tester_receive_2 = _get_value(
+            tester_pkt_count, 0, self.tester_recv_port_2, 'rx_packets')
+
+
         after_target_receive = _get_value(
             target_pkt_count, 1, self.target_recv_port, 'rx_packets')
         
-        after_target_send = _get_value(
+        after_target_send_1 = _get_value(
             target_pkt_count, 1, self.target_send_port_1, 'tx_packets')
         
-        after_tester_receive = _get_value(
+        after_tester_receive_1 = _get_value(
             tester_pkt_count, 1, self.tester_recv_port_1, 'rx_packets')
         
         after_tester_send = _get_value(
             tester_pkt_count, 1, self.tester_send_port, 'tx_packets')
 
-        if after_tester_send == before_tester_send:
-            log_msg = 'no send packets on %s(%d).' % (TESTER_SEND_PORT, 
+        after_target_send_2 = _get_value(
+            target_pkt_count, 1, self.target_send_port_2, 'tx_packets')
+        
+        after_tester_receive_2 = _get_value(
+            tester_pkt_count, 1, self.tester_recv_port_2, 'rx_packets')
+
+        if send_port != None :
+            port = self.port_map[send_port]
+            if  port == TESTER_SEND_PORT:
+                if after_tester_send == before_tester_send:
+                    log_msg = 'no send packets on %s(%d).' % (TESTER_SEND_PORT, 
                                         self.map_port[TESTER_SEND_PORT])
-        elif after_target_receive == before_target_receive:
-            log_msg = 'no receive packets on %s(%d).' % (TARGET_RECV_PORT,
+                elif after_target_receive == before_target_receive:
+                    log_msg = 'no receive packets on %s(%d).' % (TARGET_RECV_PORT,
                                         self.map_port[TARGET_RECV_PORT])
-        elif test_type == KEY_EGRESS:
-            if after_target_send == before_target_send:
-                log_msg = 'no send packets on %s(%d).' % (TARGET_SEND_PORT_1,
+            elif port == TARGET_SEND_PORT_1:
+                if after_target_send_1 == before_target_send_1:
+                    log_msg = 'no send packets on %s(%d).' % (TARGET_SEND_PORT_1,
                                         self.map_port[TARGET_SEND_PORT_1])
-            elif after_tester_receive == before_tester_receive:
-                log_msg = 'no receive packets on %s(%d).' % (TESTER_RECV_PORT_1,
+                elif after_tester_receive_1 == before_tester_receive_1:
+                    log_msg = 'no receive packets on %s(%d).' % (TESTER_RECV_PORT_1,
+                                        self.map_port[TESTER_RECV_PORT_1])
+            elif port == TARGET_SEND_PORT_2:
+                if after_target_send_2 == before_target_send_2:
+                    log_msg = 'no send packets on %s(%d).' % (TARGET_SEND_PORT_2,
+                                        self.map_port[TARGET_SEND_PORT_2])
+                elif after_tester_receive_2 == before_tester_receive_2:
+                    log_msg = 'no receive packets on %s(%d).' % (TESTER_RECV_PORT_2,
+                                        self.map_port[TESTER_RECV_PORT_2])
+
+        else :
+            if after_tester_send == before_tester_send:
+                log_msg = 'no send packets on %s(%d).' % (TESTER_SEND_PORT, 
+                                        self.map_port[TESTER_SEND_PORT])
+            elif after_target_receive == before_target_receive:
+                log_msg = 'no receive packets on %s(%d).' % (TARGET_RECV_PORT,
+                                        self.map_port[TARGET_RECV_PORT])
+            elif test_type == KEY_EGRESS:
+                if after_target_send_1 == before_target_send_1:
+                    log_msg = 'no send packets on %s(%d).' % (TARGET_SEND_PORT_1,
+                                        self.map_port[TARGET_SEND_PORT_1])
+                elif after_tester_receive_1 == before_tester_receive_1:
+                    log_msg = 'no receive packets on %s(%d).' % (TESTER_RECV_PORT_1,
+                                        self.map_port[TESTER_RECV_PORT_1])
+                else:
+                    log_msg = 'receive increment packets on %s(%d).' % (TESTER_RECV_PORT_1,
                                         self.map_port[TESTER_RECV_PORT_1])
             else:
-                log_msg = 'receive increment packets on %s(%d).' % (TESTER_RECV_PORT_1,
-                                        self.map_port[TESTER_RECV_PORT_1])
-        else:
-            assert test_type == KEY_PKT_IN
-            log_msg = 'no packet-in.'
+                assert test_type == KEY_PKT_IN
+                log_msg = 'no packet-in.'
 
         raise TestFailure(self.state, detail=log_msg)
 
