@@ -746,10 +746,10 @@ class OfTester(app_manager.RyuApp):
                 self.test_thread_state = THREAD_STATE_RUNNING
         except RegisterException as err :
             self.test_thread_state = THREAD_STATE_REGISTER_DPID_ERROR
-            return "%s(dpid=%s)" % (THREAD_STATE_STR[self.test_thread_state], e.dpid)
+            return "%s(dpid=%s)" % (THREAD_STATE_STR[self.test_thread_state], err.dpid)
         except (ValueError, TypeError) as err:
             self.test_thread_state = THREAD_STATE_TEST_PATTERN_ERROR
-            return "%s(%s)" % (THREAD_STATE_STR[self.test_thread_state], e.message)
+            return "%s(%s)" % (THREAD_STATE_STR[self.test_thread_state], err.message)
         return THREAD_STATE_STR[self.test_thread_state]
 
     def _get_thread(self):
