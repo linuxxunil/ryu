@@ -9,12 +9,12 @@ class EventTestItemRequest(event.EventRequestBase):
         super(EventTestItemRequest, self).__init__()
         self.dst = 'oftester'
         self.target_version = content["target_version"]
-        self.target_dpid = content["target_dpid"]
+        self.target_dpid = int(content["target_dpid"],16)
         self.target_recv_port = content["target_recv_port"]
         self.target_send_port_1 = content["target_send_port_1"]
         self.target_send_port_2 = content["target_send_port_2"]
         self.tester_version = content["tester_version"]
-        self.tester_dpid = content["tester_dpid"]
+        self.tester_dpid = int(content["tester_dpid"],16)
         self.tester_send_port = content["tester_send_port"]
         self.tester_recv_port_1 = content["tester_recv_port_1"]
         self.tester_recv_port_2 = content["tester_recv_port_2"]
@@ -75,12 +75,12 @@ class EventCheckLinkRequest(event.EventRequestBase):
         super(EventCheckLinkRequest, self).__init__()
         self.dst = 'oftester'
         self.target_version = content["target_version"]
-        self.target_dpid = content["target_dpid"]
+        self.target_dpid = int(content["target_dpid"],16)
         self.target_recv_port = content["target_recv_port"]
         self.target_send_port_1 = content["target_send_port_1"]
         self.target_send_port_2 = content["target_send_port_2"]
         self.tester_version = content["tester_version"]
-        self.tester_dpid = content["tester_dpid"]
+        self.tester_dpid = int(content["tester_dpid"],16)
         self.tester_send_port = content["tester_send_port"]
         self.tester_recv_port_1 = content["tester_recv_port_1"]
         self.tester_recv_port_2 = content["tester_recv_port_2"]
