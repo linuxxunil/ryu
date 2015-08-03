@@ -104,6 +104,7 @@ INTERVAL = 1  # sec
 WAIT_TIMER = 3  # sec
 CONTINUOUS_THREAD_INTVL = float(0.01)  # sec
 CONTINUOUS_PROGRESS_SPAN = 3  # sec
+TARGET_PRIORITY = ofproto_v1_3.OFP_DEFAULT_PRIORITY
 TESTER_PRIORITY = ofproto_v1_3.OFP_DEFAULT_PRIORITY + 11
 THROUGHPUT_PRIORITY = ofproto_v1_3.OFP_DEFAULT_PRIORITY + 1
 THROUGHPUT_COOKIE = THROUGHPUT_PRIORITY
@@ -810,27 +811,29 @@ class OfTester(app_manager.RyuApp):
                 {"STATUS": "NO TEST", "INFO":"tester_recv_port_2<->target_send_port_2"}]
 
             i=i+1
-            self._check_send_port(self.target_recv_port, 
-                                        self.tester_send_port)
+            self._check_send_port(TARGET_RECV_PORT,
+                                    TESTER_SEND_PORT)
             check_send_port[i]["STATUS"] = "OK"
 
             i=i+1
-            self._check_send_port(self.tester_recv_port_1, 
-                                        self.target_send_port_1)
+            self._check_send_port(TESTER_RECV_PORT_1,
+                                        TARGET_SEND_PORT_1)
             check_send_port[i]["STATUS"] = "OK"
             
             i=i+1
-            self._check_send_port(self.tester_recv_port_2, 
-                                        self.target_send_port_2)
+            self._check_send_port(TESTER_RECV_PORT_2, 
+                                        TARGET_SEND_PORT_2)
             check_send_port[i]["STATUS"] = "OK"
         except (TestReceiveError, TestFailure,
                 TestTimeout, TestError) as err:
             print type(err)
+            print "EDDDDDD"
             report[RESULT_REPORT_STATUS] = RESULT_ERROR
             report[RESULT_REPORT_TEST_STATE] = STATE_STR[self.state]
             report[RESULT_REPORT_TEST_REASON] =  str(err)
             if i >= 0: check_send_port[i]["STATUS"] = "FAILURE"
         except Exception as err :
+            print type(err)
             report[RESULT_REPORT_STATUS] = RESULT_ERROR
             report[RESULT_REPORT_TEST_STATE] = STATE_STR[self.state]
             report[RESULT_REPORT_TEST_REASON] =  str(err)
@@ -877,9 +880,11 @@ class OfTester(app_manager.RyuApp):
         report[RESULT_REPORT_TEST_ITEM] = test_item.description
         try:
             # Initialize.
-            self._test(STATE_INIT_METER)
-            self._test(STATE_INIT_GROUP)
+            self._test(STATE_INIT_METER, self.target_sw)
+            self._test(STATE_INIT_GROUP, self.target_sw)
             self._test(STATE_INIT_FLOW, self.target_sw)
+
+            # Install flows to tester
             flow = self.tester_sw.get_flow(
                 in_port=self.tester_recv_port_1,
                 out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER,
@@ -891,7 +896,7 @@ class OfTester(app_manager.RyuApp):
             self._test(STATE_INIT_THROUGHPUT_FLOW, self.tester_sw,
                                     THROUGHPUT_COOKIE)
             
-            # Install flows.
+            # Install flows to target
             for flow in test_item.prerequisite:
                 if isinstance(
                         flow, self.target_sw.dp.ofproto_parser.OFPFlowMod):
@@ -1090,26 +1095,38 @@ class OfTester(app_manager.RyuApp):
                 + '\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f'}
 
         # Initialize.
-        self._test(STATE_INIT_METER)
-        self._test(STATE_INIT_GROUP)
+        self._test(STATE_INIT_METER, self.target_sw)
+        self._test(STATE_INIT_GROUP, self.target_sw)
         self._test(STATE_INIT_FLOW, self.target_sw)
+        
+        self._test(STATE_INIT_METER, self.tester_sw)
+        self._test(STATE_INIT_GROUP, self.tester_sw)
+        self._test(STATE_INIT_FLOW, self.tester_sw)
+
+        
+        if recv_port.find("target_") < 0:
+            send_sw = self.target_sw
+            recv_sw = self.tester_sw
+        else:
+            send_sw = self.tester_sw
+            recv_sw = self.target_sw
             
-        # Install flow to tester
-        flow = self.target_sw.get_flow(
-            in_port=recv_port,
-            out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER,
-            priority=TESTER_PRIORITY)
-        self._test(STATE_FLOW_INSTALL, self.tester_sw, flow )
+
+        #Install flow
+        flow = recv_sw.get_flow(
+            in_port=self.map_port[recv_port],
+            out_port=recv_sw.dp.ofproto.OFPP_CONTROLLER)
+        self._test(STATE_FLOW_INSTALL, recv_sw, flow )
         self._test(STATE_FLOW_EXIST_CHK,
-                        self.tester_sw.send_flow_stats, flow)
+                        recv_sw.send_flow_stats, flow)
  
         target_pkt_count = [self._test(STATE_TARGET_PKT_COUNT, True)]
         tester_pkt_count = [self._test(STATE_TESTER_PKT_COUNT, False)]
         
         # Send packet(s).
-        self._packet_send(self.tester_sw, send_port, pkt)
+        self._packet_send(send_sw, self.map_port[send_port], pkt)
             
-        result = self._test(STATE_FLOW_MATCH_CHK, pkt)
+        result = self._test(STATE_FLOW_MATCH_CHK, pkt, False)
         if result == TIMEOUT:
             target_pkt_count.append(self._test(
                                 STATE_TARGET_PKT_COUNT, True))
@@ -1133,8 +1150,10 @@ class OfTester(app_manager.RyuApp):
     def _test(self, state, *args):
         test = {STATE_INIT_FLOW: self._test_initialize_flow,
                 STATE_INIT_THROUGHPUT_FLOW: self._test_initialize_flow,
-                STATE_INIT_METER: self.target_sw.del_meters,
-                STATE_INIT_GROUP: self.target_sw.del_groups,
+                STATE_INIT_METER: self._test_initialize_meter,
+                STATE_INIT_GROUP: self._test_initialize_groups,
+                #STATE_INIT_METER: self.target_sw.del_meters,
+                #STATE_INIT_GROUP: self.target_sw.del_groups,
                 STATE_FLOW_INSTALL: self._test_msg_install,
                 STATE_THROUGHPUT_FLOW_INSTALL: self._test_msg_install,
                 STATE_METER_INSTALL: self._test_msg_install,
@@ -1178,6 +1197,13 @@ class OfTester(app_manager.RyuApp):
         assert len(self.rcv_msgs) == 1
         msg = self.rcv_msgs[0]
         assert isinstance(msg, datapath.dp.ofproto_parser.OFPBarrierReply)
+
+
+    def _test_initialize_meter(self, datapath):
+        return datapath.del_meters()
+
+    def _test_initialize_groups(self, datapath):
+        return datapath.del_groups()
 
     def _test_msg_install(self, datapath, message):
         xid = datapath.send_msg(message)
@@ -1407,7 +1433,7 @@ class OfTester(app_manager.RyuApp):
                 return False, 'group_stats(%s)' % ','.join(group_stats)
             return True, None
     
-    def _test_flow_matching_check(self, pkt):
+    def _test_flow_matching_check(self, pkt, check_packtin_id=True):
         self.logger.debug("egress:[%s]", packet.Packet(pkt.get(KEY_EGRESS)))
         self.logger.debug("packet_in:[%s]",
                           packet.Packet(pkt.get(KEY_PKT_IN)))
@@ -1445,7 +1471,8 @@ class OfTester(app_manager.RyuApp):
         #    table_miss_value = msg.datapath.ofproto.OFPR_NO_MATCH
         #else:
         #    table_miss_value = msg.datapath.ofproto.OFPR_TABLE_MISS
-        if msg.datapath.id != pkt_in_src_model.dp.id:
+        if check_packtin_id == True and \
+                msg.datapath.id != pkt_in_src_model.dp.id:
             pkt_type = 'packet-in'
             err_msg = 'SW[dpid=%s]' % dpid_lib.dpid_to_str(msg.datapath.id)
         #elif msg.reason == table_miss_value or \
@@ -1528,22 +1555,22 @@ class OfTester(app_manager.RyuApp):
             tester_pkt_count, 1, self.tester_recv_port_2, 'rx_packets')
 
         if send_port != None :
-            port = self.port_map[send_port]
-            if  port == TESTER_SEND_PORT:
+            print send_port
+            if  send_port == TESTER_SEND_PORT:
                 if after_tester_send == before_tester_send:
                     log_msg = 'no send packets on %s(%d).' % (TESTER_SEND_PORT, 
                                         self.map_port[TESTER_SEND_PORT])
                 elif after_target_receive == before_target_receive:
                     log_msg = 'no receive packets on %s(%d).' % (TARGET_RECV_PORT,
                                         self.map_port[TARGET_RECV_PORT])
-            elif port == TARGET_SEND_PORT_1:
+            elif send_port == TARGET_SEND_PORT_1:
                 if after_target_send_1 == before_target_send_1:
                     log_msg = 'no send packets on %s(%d).' % (TARGET_SEND_PORT_1,
                                         self.map_port[TARGET_SEND_PORT_1])
                 elif after_tester_receive_1 == before_tester_receive_1:
                     log_msg = 'no receive packets on %s(%d).' % (TESTER_RECV_PORT_1,
                                         self.map_port[TESTER_RECV_PORT_1])
-            elif port == TARGET_SEND_PORT_2:
+            elif send_port == TARGET_SEND_PORT_2:
                 if after_target_send_2 == before_target_send_2:
                     log_msg = 'no send packets on %s(%d).' % (TARGET_SEND_PORT_2,
                                         self.map_port[TARGET_SEND_PORT_2])
