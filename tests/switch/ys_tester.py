@@ -158,8 +158,9 @@ STATE_GROUP_EXIST_CHK = 20
 STATE_DISCONNECTED = 99
 STATE_TESTER_FLOW_INSTALL = 21
 STATE_TARGET_FLOWS = 22
-STATE_GET_PORT_DESC = 23
-
+STATE_TESTER_FLOWS = 23
+STATE_GET_PORT_DESC = 24
+STATE_TARGET_FLOW_COUNT_CHK = 25
 
 STATE_STR = {
     STATE_INIT_FLOW : "FLOW INITIALIZE",
@@ -185,7 +186,9 @@ STATE_STR = {
     STATE_GROUP_EXIST_CHK : "GROUP EXIST CHECK",
     STATE_DISCONNECTED : "DISCONNECTED",
     STATE_TARGET_FLOWS : "TARGET FLOWS",
-    STATE_GET_PORT_DESC : "GET PORT DESC"
+    STATE_TESTER_FLOWS : "TESTER FLOWS",
+    STATE_GET_PORT_DESC : "GET PORT DESC",
+    STATE_TARGET_FLOW_COUNT_CHK: "TARGET FLOW COUNT CHECK"
 }
 
 # Thread state
@@ -223,6 +226,7 @@ RESULT_REPORT_PORT_LINK_STATE = "port_link_state"
 RESULT_REPORT_SEND_PORT = "send_port"
 RESULT_REPORT_OPERATING = "operating"
 RESULT_REPORT_CHECK_SEND_PORT = "check_send_port"
+RESULT_REPORT_SW_INFO = "switch_info"
 
 RESULT_OK = "OK"
 RESULT_ERROR = "ERROR"
@@ -248,73 +252,75 @@ RCV_ERR = 3
 ERR_MSG = {STATE_INIT_FLOW:
             {TIMEOUT: 'Failed to initialize flow tables: barrier request timeout.',
             RCV_ERR: 'Failed to initialize flow tables: %(err_msg)s'},
-       STATE_INIT_THROUGHPUT_FLOW:
+        STATE_INIT_THROUGHPUT_FLOW:
             {TIMEOUT: 'Failed to initialize flow tables of tester_sw: '
                  'barrier request timeout.',
             RCV_ERR: 'Failed to initialize flow tables of tester_sw: '
                  '%(err_msg)s'},
-       STATE_FLOW_INSTALL:
+        STATE_FLOW_INSTALL:
             {TIMEOUT: 'Failed to add flows: barrier request timeout.',
             RCV_ERR: 'Failed to add flows: %(err_msg)s'},
-       STATE_THROUGHPUT_FLOW_INSTALL:
+        STATE_THROUGHPUT_FLOW_INSTALL:
             {TIMEOUT: 'Failed to add flows to tester_sw: barrier request timeout.',
             RCV_ERR: 'Failed to add flows to tester_sw: %(err_msg)s'},
-       STATE_METER_INSTALL:
+        STATE_METER_INSTALL:
             {TIMEOUT: 'Failed to add meters: barrier request timeout.',
             RCV_ERR: 'Failed to add meters: %(err_msg)s'},
-       STATE_GROUP_INSTALL:
+        STATE_GROUP_INSTALL:
             {TIMEOUT: 'Failed to add groups: barrier request timeout.',
             RCV_ERR: 'Failed to add groups: %(err_msg)s'},
-       STATE_FLOW_EXIST_CHK:
+        STATE_FLOW_EXIST_CHK:
             {FAILURE: 'Added incorrect flows: %(flows)s',
             TIMEOUT: 'Failed to add flows: flow stats request timeout.',
             RCV_ERR: 'Failed to add flows: %(err_msg)s'},
-       STATE_METER_EXIST_CHK:
+        STATE_METER_EXIST_CHK:
             {FAILURE: 'Added incorrect meters: %(meters)s',
             TIMEOUT: 'Failed to add meters: meter config stats request timeout.',
             RCV_ERR: 'Failed to add meters: %(err_msg)s'},
-       STATE_GROUP_EXIST_CHK:
+        STATE_GROUP_EXIST_CHK:
             {FAILURE: 'Added incorrect groups: %(groups)s',
             TIMEOUT: 'Failed to add groups: group desc stats request timeout.',
             RCV_ERR: 'Failed to add groups: %(err_msg)s'},
-       STATE_TARGET_PKT_COUNT:
+        STATE_TARGET_PKT_COUNT:
             {TIMEOUT: 'Failed to request port stats from target: request timeout.',
             RCV_ERR: 'Failed to request port stats from target: %(err_msg)s'},
-       STATE_TESTER_PKT_COUNT:
+        STATE_TESTER_PKT_COUNT:
             {TIMEOUT: 'Failed to request port stats from tester: request timeout.',
             RCV_ERR: 'Failed to request port stats from tester: %(err_msg)s'},
-       STATE_FLOW_MATCH_CHK:
+        STATE_FLOW_MATCH_CHK:
             {FAILURE: 'Received incorrect %(pkt_type)s: %(detail)s',
             TIMEOUT: '',  # for check no packet-in reason.
             RCV_ERR: 'Failed to send packet: %(err_msg)s'},
-       STATE_NO_PKTIN_REASON:
+        STATE_NO_PKTIN_REASON:
             {FAILURE: 'Receiving timeout: %(detail)s'},
             STATE_GET_MATCH_COUNT:
             {TIMEOUT: 'Failed to request table stats: request timeout.',
             RCV_ERR: 'Failed to request table stats: %(err_msg)s'},
-       STATE_SEND_BARRIER:
+        STATE_SEND_BARRIER:
             {TIMEOUT: 'Failed to send packet: barrier request timeout.',
             RCV_ERR: 'Failed to send packet: %(err_msg)s'},
-       STATE_FLOW_UNMATCH_CHK:
+        STATE_FLOW_UNMATCH_CHK:
             {FAILURE: 'Table-miss error: increment in matched_count.',
             ERROR: 'Table-miss error: no change in lookup_count.',
             TIMEOUT: 'Failed to request table stats: request timeout.',
             RCV_ERR: 'Failed to request table stats: %(err_msg)s'},
-       STATE_THROUGHPUT_FLOW_EXIST_CHK:
+        STATE_THROUGHPUT_FLOW_EXIST_CHK:
             {FAILURE: 'Added incorrect flows to tester_sw: %(flows)s',
             TIMEOUT: 'Failed to add flows to tester_sw: '
                  'flow stats request timeout.',
             RCV_ERR: 'Failed to add flows to tester_sw: %(err_msg)s'},
-       STATE_GET_THROUGHPUT:
+        STATE_GET_THROUGHPUT:
             {TIMEOUT: 'Failed to request flow stats: request timeout.',
             RCV_ERR: 'Failed to request flow stats: %(err_msg)s'},
-       STATE_THROUGHPUT_CHK:
+        STATE_THROUGHPUT_CHK:
             {FAILURE: 'Received unexpected throughput: %(detail)s'},
-       STATE_DISCONNECTED:
+        STATE_DISCONNECTED:
             {ERROR: 'Disconnected from switch'},
         STATE_GET_PORT_DESC:
             {ERROR: 'Failed to port do not links: %(detail)s',
-            TIMEOUT: 'Failed to get port stats: request timeout.'}}
+            TIMEOUT: 'Failed to get port stats: request timeout.'},
+        STATE_TARGET_FLOW_COUNT_CHK:
+            {FAILURE: ' %(detail)s: Byte count of flow entry is not increment'}}
 
 #ERR_MSG = 'OFPErrorMsg[type=0x%02x, code=0x%02x]'
 
@@ -609,7 +615,8 @@ class OfTester(app_manager.RyuApp):
                 [STATE_FLOW_EXIST_CHK,
                  STATE_THROUGHPUT_FLOW_EXIST_CHK,
                  STATE_GET_THROUGHPUT,
-                 STATE_TARGET_FLOWS],
+                 STATE_TARGET_FLOWS,
+                 STATE_TESTER_FLOWS],
             ofp_event.EventOFPMeterConfigStatsReply:
                 [STATE_METER_EXIST_CHK],
             ofp_event.EventOFPTableStatsReply:
@@ -827,7 +834,6 @@ class OfTester(app_manager.RyuApp):
         except (TestReceiveError, TestFailure,
                 TestTimeout, TestError) as err:
             print type(err)
-            print "EDDDDDD"
             report[RESULT_REPORT_STATUS] = RESULT_ERROR
             report[RESULT_REPORT_TEST_STATE] = STATE_STR[self.state]
             report[RESULT_REPORT_TEST_REASON] =  str(err)
@@ -884,11 +890,16 @@ class OfTester(app_manager.RyuApp):
             self._test(STATE_INIT_GROUP, self.target_sw)
             self._test(STATE_INIT_FLOW, self.target_sw)
 
+            self._test(STATE_INIT_METER, self.tester_sw)
+            self._test(STATE_INIT_GROUP, self.tester_sw)
+            self._test(STATE_INIT_FLOW, self.tester_sw)
+
             # Install flows to tester
             flow = self.tester_sw.get_flow(
                 in_port=self.tester_recv_port_1,
                 out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER,
                 priority=TESTER_PRIORITY)
+            expected_tester_flow = flow
             self._test(STATE_FLOW_INSTALL, self.tester_sw, flow )
             self._test(STATE_FLOW_EXIST_CHK,
                         self.tester_sw.send_flow_stats, flow)
@@ -918,11 +929,11 @@ class OfTester(app_manager.RyuApp):
                     self._test(STATE_GROUP_EXIST_CHK,
                             self.target_sw.send_group_desc_stats, flow)
 
-
             if len(test_item.tests) > 0:
                 # Do tests.
                 target_pkt_count = []
                 tester_pkt_count = []
+
                 for pkt in test_item.tests:
                     # Get stats before sending packet(s).
                     if KEY_EGRESS in pkt or KEY_PKT_IN in pkt:
@@ -948,8 +959,9 @@ class OfTester(app_manager.RyuApp):
                     elif KEY_PACKETS in pkt:
                         self._continuous_packet_send(pkt)
 
+                    
                     # Check a result.
-                    if KEY_EGRESS in pkt or KEY_PKT_IN in pkt:
+                    if KEY_EGRESS in pkt or KEY_PKT_IN in pkt:      
                         result = self._test(STATE_FLOW_MATCH_CHK, pkt)
                         if result == TIMEOUT:
                             target_pkt_count.append(self._test(
@@ -960,6 +972,12 @@ class OfTester(app_manager.RyuApp):
                                          else KEY_PKT_IN)
                             self._test(STATE_NO_PKTIN_REASON, test_type,
                                        target_pkt_count, tester_pkt_count)
+
+                        # Get Flow Entry from target
+                        target_flow = self._test(STATE_TARGET_FLOWS,
+                                        self.target_sw, self.target_ofctl)
+                        self._test(STATE_TARGET_FLOW_COUNT_CHK, 
+                                        self.target_sw, target_flow) 
                     elif KEY_THROUGHPUT in pkt:
                         end = self._test(STATE_GET_THROUGHPUT)
                         self._test(STATE_THROUGHPUT_CHK, pkt[KEY_THROUGHPUT],
@@ -989,49 +1007,111 @@ class OfTester(app_manager.RyuApp):
             self.ingress_threads = []
 
         if report[RESULT_REPORT_STATUS] != RESULT_OK:
+            report[RESULT_REPORT_SW_INFO] = {}
+            target_info = {}
+            tester_info = {}
+
             if isinstance(
                 expected_target_flow, self.target_sw.dp.ofproto_parser.OFPFlowMod):
-                report[RESULT_REPORT_EXPECTED_FLOW] = \
-                        self._flow_mod_to_rest(expected_target_flow, 
-                                            self.target_ofctl)
+                target_info[RESULT_REPORT_EXPECTED_FLOW] = \
+                        [self._flow_mod_to_rest(expected_target_flow, 
+                                            self.target_ofctl)]
             elif isinstance(
                 expected_target_flow, self.target_sw.dp.ofproto_parser.OFPMeterMod):
-                report[RESULT_REPORT_EXPECTED_FLOW] = \
-                        self._meter_mod_to_rest(self.target_sw.dp.ofproto_parser,
+                target_info[RESULT_REPORT_EXPECTED_FLOW] = \
+                        [self._meter_mod_to_rest(self.target_sw.dp.ofproto_parser,
                                             expected_target_flow, 
-                                            self.target_ofctl)
+                                            self.target_ofctl)]
             elif isinstance(
                 expected_target_flow, self.target_sw.dp.ofproto_parser.OFPGroupMod):
-                report[RESULT_REPORT_EXPECTED_FLOW] = \
-                        self._group_mod_to_rest(expected_target_flow, 
-                                            self.target_ofctl)
-                               
-            report[RESULT_REPORT_REAL_FLOW] = \
-                self._test(STATE_TARGET_FLOWS,self.target_sw, 
-                                            self.target_ofctl)
-
+                target_info[RESULT_REPORT_EXPECTED_FLOW] = \
+                        [self._group_mod_to_rest(expected_target_flow, 
+                                            self.target_ofctl)]
             
-            report[RESULT_REPORT_PORT_LINK_STATE] = self._get_port_link_status()
-            report[RESULT_REPORT_SEND_PORT] = self.tester_send_port
-            report[RESULT_REPORT_OPERATING] = test_item.tests_str
+            if isinstance(
+                expected_tester_flow, self.tester_sw.dp.ofproto_parser.OFPFlowMod):
+                tester_info[RESULT_REPORT_EXPECTED_FLOW] = \
+                        [self._flow_mod_to_rest(expected_tester_flow, 
+                                            self.tester_ofctl)]
+            elif isinstance(
+                expected_tester_flow, self.tester_sw.dp.ofproto_parser.OFPMeterMod):
+                tester_info[RESULT_REPORT_EXPECTED_FLOW] = \
+                        [self._meter_mod_to_rest(self.tester_sw.dp.ofproto_parser,
+                                            expected_tester_flow, 
+                                            self.tester_ofctl)]
+            elif isinstance(
+                expected_tester_flow, self.tester_sw.dp.ofproto_parser.OFPGroupMod):
+                tester_info[RESULT_REPORT_EXPECTED_FLOW] = \
+                        [self._group_mod_to_rest(expected_tester_flow, 
+                                            self.tester_ofctl)]
+
+            if self.target_dpid == self.tester_dpid:
+                for flow in tester_info[RESULT_REPORT_EXPECTED_FLOW]:
+                    target_info[RESULT_REPORT_EXPECTED_FLOW].append(flow)
+
+                target_info[RESULT_REPORT_REAL_FLOW] = \
+                    self._test(STATE_TARGET_FLOWS,self.target_sw, self.target_ofctl)
+
+            else:
+                target_info[RESULT_REPORT_REAL_FLOW] = \
+                    self._test(STATE_TARGET_FLOWS,self.target_sw, self.target_ofctl)
+
+                tester_info[RESULT_REPORT_REAL_FLOW] = \
+                    self._test(STATE_TESTER_FLOWS,self.tester_sw, self.tester_ofctl)
+
 
             if err_state in [  STATE_THROUGHPUT_FLOW_INSTALL, 
                                 STATE_THROUGHPUT_FLOW_EXIST_CHK,
                                 STATE_GET_THROUGHPUT, STATE_GET_MATCH_COUNT,
                                 STATE_FLOW_MATCH_CHK, STATE_NO_PKTIN_REASON,
-                                STATE_SEND_BARRIER, STATE_FLOW_UNMATCH_CHK] :
+                                STATE_SEND_BARRIER, STATE_FLOW_UNMATCH_CHK,
+                                STATE_TARGET_FLOW_COUNT_CHK] :
+                
                 if len(target_pkt_count) > 0:
-                    report[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
+                    target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
                     if len(target_pkt_count) < 2 :
                         target_pkt_count.append(
-                                self._test(STATE_TARGET_PKT_COUNT, True))
-                    report[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[1]
+                            self._test(STATE_TARGET_PKT_COUNT, True))
+                    target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[1]
                 else :
                     target_pkt_count.append(
                                 self._test(STATE_TARGET_PKT_COUNT, True))
-                    report[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
-                    report[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[0]        
-            
+                    target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
+                    target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[0]     
+                
+                if len(tester_pkt_count) > 0:
+                    tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0]
+                    if len(tester_pkt_count) < 2:
+                        tester_pkt_count.append(
+                            self._test(STATE_TESTER_PKT_COUNT, False))
+                    tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[1]
+                else :
+                    tester_pkt_count.append(
+                                self._test(STATE_TESTER_PKT_COUNT, False))
+                    tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0]
+                    tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[0] 
+
+                if self.target_dpid == self.tester_dpid:
+                    for state in tester_info[RESULT_REPORT_BEFORE_PORT_STATE]:
+                        if tester_info[RESULT_REPORT_BEFORE_PORT_STATE][state]["name"]\
+                            != "NULL":
+                            target_info[RESULT_REPORT_BEFORE_PORT_STATE][state]["name"]=\
+                            tester_info[RESULT_REPORT_BEFORE_PORT_STATE][state]["name"]
+                    for state in tester_info[RESULT_REPORT_AFTER_PORT_STATE]:
+                        if tester_info[RESULT_REPORT_AFTER_PORT_STATE][state]["name"]\
+                            != "NULL":
+                            target_info[RESULT_REPORT_AFTER_PORT_STATE][state]["name"]=\
+                            tester_info[RESULT_REPORT_AFTER_PORT_STATE][state]["name"]    
+                    report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
+                else:
+                    report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
+                    report[RESULT_REPORT_SW_INFO][self.tester_dpid] = tester_info
+                    
+            report[RESULT_REPORT_PORT_LINK_STATE] = self._get_port_link_status()
+            report[RESULT_REPORT_SEND_PORT] = {
+                        "name": TESTER_SEND_PORT,
+                        "port": self.tester_send_port}
+            report[RESULT_REPORT_OPERATING] = test_item.tests_str
         hub.sleep(0)
         return report
 
@@ -1152,8 +1232,6 @@ class OfTester(app_manager.RyuApp):
                 STATE_INIT_THROUGHPUT_FLOW: self._test_initialize_flow,
                 STATE_INIT_METER: self._test_initialize_meter,
                 STATE_INIT_GROUP: self._test_initialize_groups,
-                #STATE_INIT_METER: self.target_sw.del_meters,
-                #STATE_INIT_GROUP: self.target_sw.del_groups,
                 STATE_FLOW_INSTALL: self._test_msg_install,
                 STATE_THROUGHPUT_FLOW_INSTALL: self._test_msg_install,
                 STATE_METER_INSTALL: self._test_msg_install,
@@ -1172,7 +1250,9 @@ class OfTester(app_manager.RyuApp):
                 STATE_GET_THROUGHPUT: self._test_get_throughput,
                 STATE_THROUGHPUT_CHK: self._test_throughput_check,
                 STATE_TARGET_FLOWS: self._get_flows_state,
+                STATE_TESTER_FLOWS: self._get_flows_state,
                 STATE_GET_PORT_DESC: self._get_port_desc_state,
+                STATE_TARGET_FLOW_COUNT_CHK: self._test_flow_count
                 }
 
         self.send_msg_xids = []
@@ -1432,7 +1512,48 @@ class OfTester(app_manager.RyuApp):
                     group_stats.append('%s=%s' % (attr, getattr(stats1, attr)))
                 return False, 'group_stats(%s)' % ','.join(group_stats)
             return True, None
-    
+
+    def _diff_packets(self, model_pkt, rcv_pkt):
+        msg = []
+        for rcv_p in rcv_pkt.protocols:
+            if type(rcv_p) != str:
+                model_protocols = model_pkt.get_protocols(type(rcv_p))
+                if len(model_protocols) == 1:
+                    model_p = model_protocols[0]
+                    diff = []
+                    for attr in rcv_p.__dict__:
+                        if attr.startswith('_'):
+                            continue
+                        if callable(attr):
+                            continue
+                        if hasattr(rcv_p.__class__, attr):
+                            continue
+                        rcv_attr = repr(getattr(rcv_p, attr))
+                        model_attr = repr(getattr(model_p, attr))
+                        if rcv_attr != model_attr:
+                            diff.append('%s=%s' % (attr, rcv_attr))
+                    if diff:
+                        msg.append('%s(%s)' %
+                                   (rcv_p.__class__.__name__,
+                                    ','.join(diff)))
+                else:
+                    if (not model_protocols or
+                            not str(rcv_p) in str(model_protocols)):
+                        msg.append(str(rcv_p))
+            else:
+                model_p = ''
+                for p in model_pkt.protocols:
+                    if type(p) == str:
+                        model_p = p
+                        break
+                if model_p != rcv_p:
+                    msg.append('str(%s)' % repr(rcv_p))
+        if msg:
+            return '/'.join(msg)
+        else:
+            return ('Encounter an error during packet comparison.'
+                    ' it is malformed.')
+
     def _test_flow_matching_check(self, pkt, check_packtin_id=True):
         self.logger.debug("egress:[%s]", packet.Packet(pkt.get(KEY_EGRESS)))
         self.logger.debug("packet_in:[%s]",
@@ -1498,8 +1619,17 @@ class OfTester(app_manager.RyuApp):
         for msg in self.rcv_msgs:
             for stats in msg.body:
                 name = "NULL"
-                if self.port_map.has_key(stats.port_no):
-                    name = self.port_map[stats.port_no]
+                if sw == self.target_sw:
+                    for m in [TARGET_RECV_PORT, TARGET_SEND_PORT_1,
+                                TARGET_SEND_PORT_2]:
+                        if self.map_port[m] == stats.port_no:
+                            name = m
+                elif sw == self.tester_sw:
+                    for m in [TESTER_SEND_PORT, TESTER_RECV_PORT_1,
+                                TESTER_RECV_PORT_2]:   
+                        if self.map_port[m] == stats.port_no:
+                            name = m
+
                 result[stats.port_no] = {'name'      : name,
                                          'rx_packets': stats.rx_packets,
                                          'tx_packets': stats.tx_packets,
@@ -1555,7 +1685,6 @@ class OfTester(app_manager.RyuApp):
             tester_pkt_count, 1, self.tester_recv_port_2, 'rx_packets')
 
         if send_port != None :
-            print send_port
             if  send_port == TESTER_SEND_PORT:
                 if after_tester_send == before_tester_send:
                     log_msg = 'no send packets on %s(%d).' % (TESTER_SEND_PORT, 
@@ -1694,6 +1823,23 @@ class OfTester(app_manager.RyuApp):
         if msgs:
             raise TestFailure(self.state, detail=', '.join(msgs))
     
+    def _test_flow_count(self, sw, flows):
+        if sw == self.target_sw :
+            priority = TARGET_PRIORITY
+        else :
+            priority = TESTER_PRIORITY
+
+        flow = flows[0] #set default
+        for f in flows:
+            if f["priority"] == priority: flow = f
+
+        if len(flow) < 1 or flow["byte_count"] == 0:
+                err_msg = 'SW[dpid=%s]' % dpid_lib.dpid_to_str(sw.dp.id)
+        else:
+            return RESULT_OK
+
+        raise TestFailure(self.state, detail=err_msg)
+
     def _one_time_packet_send(self, pkt):
         self.logger.debug("send_packet:[%s]", packet.Packet(pkt[KEY_INGRESS]))
         xid = self.tester_sw.send_packet_out(pkt[KEY_INGRESS])
