@@ -1626,30 +1626,43 @@ class OfTester(app_manager.RyuApp):
         self.send_msg_xids.append(xid)
         self._wait()
         result = {}
+
+        if sw == self.target_sw:
+            for port in [TARGET_RECV_PORT, TARGET_SEND_PORT_1, 
+                            TARGET_SEND_PORT_2]:
+                result[self.map_port[port]] = {'name'   : port,
+                                            'rx_packets': -1,
+                                            'tx_packets': -1,
+                                            'rx_bytes'  : -1,
+                                            'tx_bytes'  : -1}
+        else :
+            for port in [TESTER_SEND_PORT, TESTER_RECV_PORT_1, 
+                            TESTER_RECV_PORT_2]:
+                result[self.map_port[port]] = {'name'   : port,
+                                            'rx_packets': -1,
+                                            'tx_packets': -1,
+                                            'rx_bytes'  : -1,
+                                            'tx_bytes'  : -1}
+
         for msg in self.rcv_msgs:
             for stats in msg.body:
-                name = None
+                match = False
                 if sw == self.target_sw:
-                    if stats.port_no == self.map_port[TARGET_RECV_PORT]:
-                        name = TARGET_RECV_PORT
-                    elif stats.port_no == self.map_port[TARGET_SEND_PORT_1]:
-                        name = TARGET_SEND_PORT_1
-                    elif stats.port_no == self.map_port[TARGET_SEND_PORT_2]:
-                        name = TARGET_SEND_PORT_2
+                    if stats.port_no == self.map_port[TARGET_RECV_PORT] or\
+                        stats.port_no == self.map_port[TARGET_SEND_PORT_1] or\
+                        stats.port_no == self.map_port[TARGET_SEND_PORT_2]:
+                        match = True
                 elif sw == self.tester_sw:
-                    if stats.port_no == self.map_port[TESTER_SEND_PORT]:
-                        name = TESTER_SEND_PORT
-                    elif stats.port_no == self.map_port[TESTER_RECV_PORT_1]:
-                        name = TESTER_RECV_PORT_1
-                    elif stats.port_no == self.map_port[TESTER_RECV_PORT_2]:
-                        name = TESTER_RECV_PORT_2
+                    if stats.port_no == self.map_port[TESTER_SEND_PORT] or\
+                        stats.port_no == self.map_port[TESTER_RECV_PORT_1] or\
+                        stats.port_no == self.map_port[TESTER_RECV_PORT_2]:
+                        match = True
 
-                if name != None:
-                    result[stats.port_no] = {'name'      : name,
-                                            'rx_packets': stats.rx_packets,
-                                            'tx_packets': stats.tx_packets,
-                                            'rx_bytes'  : stats.rx_bytes,
-                                            'tx_bytes'  : stats.tx_bytes}
+                if match :
+                    result[stats.port_no]['rx_packets'] = stats.rx_packets
+                    result[stats.port_no]['tx_packets'] = stats.tx_packets
+                    result[stats.port_no]['rx_bytes']   = stats.rx_bytes
+                    result[stats.port_no]['tx_bytes']   = stats.tx_bytes
         return result
 
 
