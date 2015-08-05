@@ -1101,12 +1101,11 @@ class OfTester(app_manager.RyuApp):
 
                 if self.target_dpid == self.tester_dpid:
                     for state in tester_info[RESULT_REPORT_BEFORE_PORT_STATE]:
-                        target_info[RESULT_REPORT_BEFORE_PORT_STATE][state] = \
-                            tester_info[RESULT_REPORT_BEFORE_PORT_STATE][state]
-
+                        target_info[RESULT_REPORT_BEFORE_PORT_STATE].append(state)
+        
                     for state in tester_info[RESULT_REPORT_AFTER_PORT_STATE]:
-                        target_info[RESULT_REPORT_AFTER_PORT_STATE][state] = \
-                            tester_info[RESULT_REPORT_AFTER_PORT_STATE][state]  
+                        target_info[RESULT_REPORT_AFTER_PORT_STATE].append(state)
+                        
                     report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
                 else:
                     report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
@@ -1625,24 +1624,26 @@ class OfTester(app_manager.RyuApp):
         xid = sw.send_port_stats()
         self.send_msg_xids.append(xid)
         self._wait()
-        result = {}
+        result = []
 
         if sw == self.target_sw:
             for port in [TARGET_RECV_PORT, TARGET_SEND_PORT_1, 
                             TARGET_SEND_PORT_2]:
-                result[self.map_port[port]] = {'name'   : port,
-                                            'rx_packets': -1,
-                                            'tx_packets': -1,
-                                            'rx_bytes'  : -1,
-                                            'tx_bytes'  : -1}
+                result.append({ 'port_no': self.map_port[port],
+                                'name'   : port,
+                                'rx_packets': -1,
+                                'tx_packets': -1,
+                                'rx_bytes'  : -1,
+                                'tx_bytes'  : -1})
         else :
             for port in [TESTER_SEND_PORT, TESTER_RECV_PORT_1, 
                             TESTER_RECV_PORT_2]:
-                result[self.map_port[port]] = {'name'   : port,
-                                            'rx_packets': -1,
-                                            'tx_packets': -1,
-                                            'rx_bytes'  : -1,
-                                            'tx_bytes'  : -1}
+                result.append({ 'port_no': self.map_port[port],
+                                'name'   : port,
+                                'rx_packets': -1,
+                                'tx_packets': -1,
+                                'rx_bytes'  : -1,
+                                'tx_bytes'  : -1})
 
         for msg in self.rcv_msgs:
             for stats in msg.body:
@@ -1659,10 +1660,12 @@ class OfTester(app_manager.RyuApp):
                         match = True
 
                 if match :
-                    result[stats.port_no]['rx_packets'] = stats.rx_packets
-                    result[stats.port_no]['tx_packets'] = stats.tx_packets
-                    result[stats.port_no]['rx_bytes']   = stats.rx_bytes
-                    result[stats.port_no]['tx_bytes']   = stats.tx_bytes
+                    for r in result:
+                        if r['port_no'] == stats.port_no:
+                            r['rx_packets'] = stats.rx_packets
+                            r['tx_packets'] = stats.tx_packets
+                            r['rx_bytes']   = stats.rx_bytes
+                            r['tx_bytes']   = stats.tx_bytes
         return result
 
 
@@ -1672,8 +1675,10 @@ class OfTester(app_manager.RyuApp):
                                     send_port=None):
 
         def _get_value(pkt_count, index, port, opt):
-            return pkt_count[index][port][opt] \
-            if pkt_count[index].has_key(port) else 0
+            for pkt in pkt_count[index]:
+                if pkt["port_no"] == port:
+                    return pkt_count[index][port][opt]
+            return 0
         # 0 : before / 1 : after
         before_target_receive = _get_value(
             target_pkt_count, 0, self.target_recv_port, 'rx_packets')
