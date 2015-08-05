@@ -893,7 +893,9 @@ class OfTester(app_manager.RyuApp):
             self._test(STATE_INIT_METER, self.tester_sw)
             self._test(STATE_INIT_GROUP, self.tester_sw)
             self._test(STATE_INIT_FLOW, self.tester_sw)
-
+            self._test(STATE_INIT_THROUGHPUT_FLOW, self.tester_sw,
+                                    THROUGHPUT_COOKIE)
+            
             # Install flows to tester
             flow = self.tester_sw.get_flow(
                 in_port=self.tester_recv_port_1,
@@ -904,8 +906,13 @@ class OfTester(app_manager.RyuApp):
             self._test(STATE_FLOW_EXIST_CHK,
                         self.tester_sw.send_flow_stats, flow)
 
-            self._test(STATE_INIT_THROUGHPUT_FLOW, self.tester_sw,
-                                    THROUGHPUT_COOKIE)
+            flow = self.target_sw.get_flow(
+                in_port=None,
+                out_port=None,
+                priority=0)
+            self._test(STATE_FLOW_INSTALL, self.target_sw, flow )
+            self._test(STATE_FLOW_EXIST_CHK,
+                        self.target_sw.send_flow_stats, flow)
             
             # Install flows to target
             for flow in test_item.prerequisite:
@@ -922,6 +929,7 @@ class OfTester(app_manager.RyuApp):
                     self._test(STATE_METER_INSTALL, self.target_sw, flow)
                     self._test(STATE_METER_EXIST_CHK,
                             self.target_sw.send_meter_config_stats, flow)
+
                 elif isinstance(
                         flow, self.target_sw.dp.ofproto_parser.OFPGroupMod):
                     expected_target_flow = flow
@@ -959,7 +967,6 @@ class OfTester(app_manager.RyuApp):
                     elif KEY_PACKETS in pkt:
                         self._continuous_packet_send(pkt)
 
-                    
                     # Check a result.
                     if KEY_EGRESS in pkt or KEY_PKT_IN in pkt:      
                         result = self._test(STATE_FLOW_MATCH_CHK, pkt)
@@ -1010,6 +1017,7 @@ class OfTester(app_manager.RyuApp):
             report[RESULT_REPORT_SW_INFO] = {}
             target_info = {}
             tester_info = {}
+
 
             if isinstance(
                 expected_target_flow, self.target_sw.dp.ofproto_parser.OFPFlowMod):
@@ -1093,15 +1101,12 @@ class OfTester(app_manager.RyuApp):
 
                 if self.target_dpid == self.tester_dpid:
                     for state in tester_info[RESULT_REPORT_BEFORE_PORT_STATE]:
-                        if tester_info[RESULT_REPORT_BEFORE_PORT_STATE][state]["name"]\
-                            != "NULL":
-                            target_info[RESULT_REPORT_BEFORE_PORT_STATE][state]["name"]=\
-                            tester_info[RESULT_REPORT_BEFORE_PORT_STATE][state]["name"]
+                        target_info[RESULT_REPORT_BEFORE_PORT_STATE][state] = \
+                            tester_info[RESULT_REPORT_BEFORE_PORT_STATE][state]
+
                     for state in tester_info[RESULT_REPORT_AFTER_PORT_STATE]:
-                        if tester_info[RESULT_REPORT_AFTER_PORT_STATE][state]["name"]\
-                            != "NULL":
-                            target_info[RESULT_REPORT_AFTER_PORT_STATE][state]["name"]=\
-                            tester_info[RESULT_REPORT_AFTER_PORT_STATE][state]["name"]    
+                        target_info[RESULT_REPORT_AFTER_PORT_STATE][state] = \
+                            tester_info[RESULT_REPORT_AFTER_PORT_STATE][state]  
                     report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
                 else:
                     report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
@@ -1420,6 +1425,7 @@ class OfTester(app_manager.RyuApp):
         for msg in self.rcv_msgs:
             assert isinstance(msg, method_dict[method.__name__]['reply'])
             for stats in msg.body:
+                
                 result, stats = method_dict[method.__name__]['compare'](
                     stats, message)
                 if result:
@@ -1477,6 +1483,10 @@ class OfTester(app_manager.RyuApp):
             if attr == 'instructions':
                 value1 = sorted(value1)
                 value2 = sorted(value2)
+
+                if len(value1) == 0:
+                    if len(value2[0].actions) == 0:
+                        value2 = []
             elif attr == 'match':
                 value1 = sorted(__reasm_match(value1))
                 value2 = sorted(__reasm_match(value2))
@@ -1618,23 +1628,28 @@ class OfTester(app_manager.RyuApp):
         result = {}
         for msg in self.rcv_msgs:
             for stats in msg.body:
-                name = "NULL"
+                name = None
                 if sw == self.target_sw:
-                    for m in [TARGET_RECV_PORT, TARGET_SEND_PORT_1,
-                                TARGET_SEND_PORT_2]:
-                        if self.map_port[m] == stats.port_no:
-                            name = m
+                    if stats.port_no == self.map_port[TARGET_RECV_PORT]:
+                        name = TARGET_RECV_PORT
+                    elif stats.port_no == self.map_port[TARGET_SEND_PORT_1]:
+                        name = TARGET_SEND_PORT_1
+                    elif stats.port_no == self.map_port[TARGET_SEND_PORT_2]:
+                        name = TARGET_SEND_PORT_2
                 elif sw == self.tester_sw:
-                    for m in [TESTER_SEND_PORT, TESTER_RECV_PORT_1,
-                                TESTER_RECV_PORT_2]:   
-                        if self.map_port[m] == stats.port_no:
-                            name = m
+                    if stats.port_no == self.map_port[TESTER_SEND_PORT]:
+                        name = TESTER_SEND_PORT
+                    elif stats.port_no == self.map_port[TESTER_RECV_PORT_1]:
+                        name = TESTER_RECV_PORT_1
+                    elif stats.port_no == self.map_port[TESTER_RECV_PORT_2]:
+                        name = TESTER_RECV_PORT_2
 
-                result[stats.port_no] = {'name'      : name,
-                                         'rx_packets': stats.rx_packets,
-                                         'tx_packets': stats.tx_packets,
-                                         'rx_bytes'  : stats.rx_bytes,
-                                         'tx_bytes'  : stats.tx_bytes}
+                if name != None:
+                    result[stats.port_no] = {'name'      : name,
+                                            'rx_packets': stats.rx_packets,
+                                            'tx_packets': stats.tx_packets,
+                                            'rx_bytes'  : stats.rx_bytes,
+                                            'tx_bytes'  : stats.tx_bytes}
         return result
 
 
@@ -2015,14 +2030,26 @@ class TestItem(stringify.StringifyMixin):
         def __test_pkt_str_from_json(test):
             return _decode_list(test)
 
-        def __normalize_match(ofproto, match):
+        def __normalize_match(ofproto, match, auto_in_port=False):
             match_json = match.to_jsondict()
             oxm_fields = match_json['OFPMatch']['oxm_fields']
             fields = []
+            flag = True
             for field in oxm_fields:
+                if auto_in_port == True and field.has_key("OXMTlv"):
+                    if field["OXMTlv"]["field"] == "in_port":
+                        flag = False
+
                 field_obj = ofproto.oxm_from_jsondict(field)
                 field_obj = ofproto.oxm_normalize_user(*field_obj)
                 fields.append(field_obj)
+            if auto_in_port == True and flag:
+                field = {"OXMTlv": {"field":"in_port", 
+                    "value": self.map_port[TARGET_RECV_PORT]}}
+                field_obj = ofproto.oxm_from_jsondict(field)
+                field_obj = ofproto.oxm_normalize_user(*field_obj)
+                fields.append(field_obj)
+
             return match.__class__(_ordered_fields=fields)
 
         def __normalize_action(ofproto, action):
@@ -2078,7 +2105,9 @@ class TestItem(stringify.StringifyMixin):
             msg.xid = 0
             if isinstance(msg, target_parser.OFPFlowMod):
                 # normalize OFPMatch
-                msg.match = __normalize_match(target_ofproto, msg.match)
+                msg.match = __normalize_match(target_ofproto, msg.match, 
+                                        auto_in_port=True)
+
                 # normalize OFPActionSetField
                 insts = []
                 for inst in msg.instructions:
@@ -2180,7 +2209,7 @@ class TestItem(stringify.StringifyMixin):
                             cookie=THROUGHPUT_COOKIE,
                             priority=THROUGHPUT_PRIORITY)
                         msg.match = __normalize_match(
-                            tester_ofproto, msg.match)
+                            tester_ofproto, msg.match, auto_in_port=False)
                         one[KEY_FLOW] = msg
                         one[KEY_KBPS] = throughput.get(KEY_KBPS)
                         one[KEY_PKTPS] = throughput.get(KEY_PKTPS)
@@ -2226,10 +2255,15 @@ class OpenFlowSw(object):
         ofp = self.dp.ofproto
         parser = self.dp.ofproto_parser
 
-        match = parser.OFPMatch(in_port=in_port)
-        max_len = (0 if out_port != ofp.OFPP_CONTROLLER
+        if in_port == None:
+            match = parser.OFPMatch()
+            actions = []
+        else:
+            match = parser.OFPMatch(in_port=in_port)
+            max_len = (0 if out_port != ofp.OFPP_CONTROLLER
                    else ofp.OFPCML_MAX)
-        actions = [parser.OFPActionOutput(out_port, max_len)]
+            actions = [parser.OFPActionOutput(out_port, max_len)]
+        
         inst = [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS,
                                              actions)]
         if priority == None:
@@ -2242,7 +2276,6 @@ class OpenFlowSw(object):
                                 command=ofp.OFPFC_ADD,
                                 match=match, instructions=inst)
         return mod
-        #return self.send_msg(mod)
 
     def del_flows(self, cookie=0):
         """ Delete all flow except default flow. """
