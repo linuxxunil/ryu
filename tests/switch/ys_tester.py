@@ -884,6 +884,8 @@ class OfTester(app_manager.RyuApp):
         report = {}
         report[RESULT_REPORT_STATUS] = RESULT_OK
         report[RESULT_REPORT_TEST_ITEM] = test_item.description
+        target_pkt_count = []
+        tester_pkt_count = []
         try:
             # Initialize.
             self._test(STATE_INIT_METER, self.target_sw)
@@ -939,8 +941,6 @@ class OfTester(app_manager.RyuApp):
 
             if len(test_item.tests) > 0:
                 # Do tests.
-                target_pkt_count = []
-                tester_pkt_count = []
 
                 for pkt in test_item.tests:
                     # Get stats before sending packet(s).
@@ -1068,48 +1068,48 @@ class OfTester(app_manager.RyuApp):
                     self._test(STATE_TESTER_FLOWS,self.tester_sw, self.tester_ofctl)
 
 
-            if err_state in [  STATE_THROUGHPUT_FLOW_INSTALL, 
-                                STATE_THROUGHPUT_FLOW_EXIST_CHK,
-                                STATE_GET_THROUGHPUT, STATE_GET_MATCH_COUNT,
-                                STATE_FLOW_MATCH_CHK, STATE_NO_PKTIN_REASON,
-                                STATE_SEND_BARRIER, STATE_FLOW_UNMATCH_CHK,
-                                STATE_TARGET_FLOW_COUNT_CHK] :
+            #if err_state in [  STATE_THROUGHPUT_FLOW_INSTALL, 
+            #                    STATE_THROUGHPUT_FLOW_EXIST_CHK,
+            #                    STATE_GET_THROUGHPUT, STATE_GET_MATCH_COUNT,
+            #                    STATE_FLOW_MATCH_CHK, STATE_NO_PKTIN_REASON,
+            #                STATE_SEND_BARRIER, STATE_FLOW_UNMATCH_CHK,
+            #                    STATE_TARGET_FLOW_COUNT_CHK] :
                 
-                if len(target_pkt_count) > 0:
-                    target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
-                    if len(target_pkt_count) < 2 :
-                        target_pkt_count.append(
-                            self._test(STATE_TARGET_PKT_COUNT, True))
-                    target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[1]
-                else :
+            if len(target_pkt_count) > 0:
+                target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
+                if len(target_pkt_count) < 2 :
                     target_pkt_count.append(
-                                self._test(STATE_TARGET_PKT_COUNT, True))
-                    target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
-                    target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[0]     
+                            self._test(STATE_TARGET_PKT_COUNT, True))
+                target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[1]
+            else :
+                target_pkt_count.append(
+                            self._test(STATE_TARGET_PKT_COUNT, True))
+                target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
+                target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[0]     
                 
-                if len(tester_pkt_count) > 0:
-                    tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0]
-                    if len(tester_pkt_count) < 2:
-                        tester_pkt_count.append(
-                            self._test(STATE_TESTER_PKT_COUNT, False))
-                    tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[1]
-                else :
+            if len(tester_pkt_count) > 0:
+                tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0]
+                if len(tester_pkt_count) < 2:
                     tester_pkt_count.append(
-                                self._test(STATE_TESTER_PKT_COUNT, False))
-                    tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0]
-                    tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[0] 
+                        self._test(STATE_TESTER_PKT_COUNT, False))
+                tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[1]
+            else :
+                tester_pkt_count.append(
+                             self._test(STATE_TESTER_PKT_COUNT, False))
+                tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0]
+                tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[0] 
 
-                if self.target_dpid == self.tester_dpid:
-                    for state in tester_info[RESULT_REPORT_BEFORE_PORT_STATE]:
-                        target_info[RESULT_REPORT_BEFORE_PORT_STATE].append(state)
+            if self.target_dpid == self.tester_dpid:
+                for state in tester_info[RESULT_REPORT_BEFORE_PORT_STATE]:
+                    target_info[RESULT_REPORT_BEFORE_PORT_STATE].append(state)
         
-                    for state in tester_info[RESULT_REPORT_AFTER_PORT_STATE]:
-                        target_info[RESULT_REPORT_AFTER_PORT_STATE].append(state)
+                for state in tester_info[RESULT_REPORT_AFTER_PORT_STATE]:
+                    target_info[RESULT_REPORT_AFTER_PORT_STATE].append(state)
                         
-                    report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
-                else:
-                    report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
-                    report[RESULT_REPORT_SW_INFO][self.tester_dpid] = tester_info
+                report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
+            else:
+                report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
+                report[RESULT_REPORT_SW_INFO][self.tester_dpid] = tester_info
                     
             report[RESULT_REPORT_PORT_LINK_STATE] = self._get_port_link_status()
             report[RESULT_REPORT_SEND_PORT] = {
@@ -1675,9 +1675,10 @@ class OfTester(app_manager.RyuApp):
                                     send_port=None):
 
         def _get_value(pkt_count, index, port, opt):
+
             for pkt in pkt_count[index]:
                 if pkt["port_no"] == port:
-                    return pkt_count[index][port][opt]
+                    return pkt[opt]
             return 0
         # 0 : before / 1 : after
         before_target_receive = _get_value(
