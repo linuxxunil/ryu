@@ -235,6 +235,10 @@ RESULT_ERROR = "ERROR"
 TEST_ITEM_ERROR = 'Test content format error (%(detail)s)'
 
 
+# target
+SW_TARGET = 0
+SW_TESTER = 1
+
 # Test port
 TESTER_SEND_PORT   = "tester_send_port"
 TESTER_RECV_PORT_1 = "tester_recv_port_1"
@@ -903,7 +907,7 @@ class OfTester(app_manager.RyuApp):
                 in_port=self.tester_recv_port_1,
                 out_port=self.tester_sw.dp.ofproto.OFPP_CONTROLLER,
                 priority=TESTER_PRIORITY)
-            expected_tester_flow = flow
+            expected_flow = [flow, SW_TESTER]
             self._test(STATE_FLOW_INSTALL, self.tester_sw, flow )
             self._test(STATE_FLOW_EXIST_CHK,
                         self.tester_sw.send_flow_stats, flow)
@@ -912,6 +916,7 @@ class OfTester(app_manager.RyuApp):
                 in_port=None,
                 out_port=None,
                 priority=0)
+            expected_flow = [flow, SW_TARGET]
             self._test(STATE_FLOW_INSTALL, self.target_sw, flow )
             self._test(STATE_FLOW_EXIST_CHK,
                         self.target_sw.send_flow_stats, flow)
@@ -920,21 +925,21 @@ class OfTester(app_manager.RyuApp):
             for flow in test_item.prerequisite:
                 if isinstance(
                         flow, self.target_sw.dp.ofproto_parser.OFPFlowMod):
-                    expected_target_flow = flow
+                    expected_flow = [flow, SW_TARGET]
                     self._test(STATE_FLOW_INSTALL, self.target_sw, flow)
                     self._test(STATE_FLOW_EXIST_CHK,
                         self.target_sw.send_flow_stats, flow)
                     
                 elif isinstance(
                         flow, self.target_sw.dp.ofproto_parser.OFPMeterMod):
-                    expected_target_flow = flow
+                    expected_flow = [flow, SW_TARGET]
                     self._test(STATE_METER_INSTALL, self.target_sw, flow)
                     self._test(STATE_METER_EXIST_CHK,
                             self.target_sw.send_meter_config_stats, flow)
 
                 elif isinstance(
                         flow, self.target_sw.dp.ofproto_parser.OFPGroupMod):
-                    expected_target_flow = flow
+                    expected_flow = [flow, SW_TARGET]
                     self._test(STATE_GROUP_INSTALL, self.target_sw, flow)
                     self._test(STATE_GROUP_EXIST_CHK,
                             self.target_sw.send_group_desc_stats, flow)
@@ -957,6 +962,7 @@ class OfTester(app_manager.RyuApp):
                                    self.tester_sw, flow)
                             self._test(STATE_THROUGHPUT_FLOW_EXIST_CHK,
                                    self.tester_sw.send_flow_stats, flow)
+
                         start = self._test(STATE_GET_THROUGHPUT)
                     elif KEY_TBL_MISS in pkt:
                         before_stats = self._test(STATE_GET_MATCH_COUNT)
@@ -1015,48 +1021,45 @@ class OfTester(app_manager.RyuApp):
 
         if report[RESULT_REPORT_STATUS] != RESULT_OK:
             report[RESULT_REPORT_SW_INFO] = {}
-            target_info = {}
-            tester_info = {}
+            target_info = {RESULT_REPORT_EXPECTED_FLOW:[]}
+            tester_info = {RESULT_REPORT_EXPECTED_FLOW:[]}
 
-
-            if isinstance(
-                expected_target_flow, self.target_sw.dp.ofproto_parser.OFPFlowMod):
-                target_info[RESULT_REPORT_EXPECTED_FLOW] = \
-                        [self._flow_mod_to_rest(expected_target_flow, 
-                                            self.target_ofctl)]
-            elif isinstance(
-                expected_target_flow, self.target_sw.dp.ofproto_parser.OFPMeterMod):
-                target_info[RESULT_REPORT_EXPECTED_FLOW] = \
-                        [self._meter_mod_to_rest(self.target_sw.dp.ofproto_parser,
-                                            expected_target_flow, 
-                                            self.target_ofctl)]
-            elif isinstance(
-                expected_target_flow, self.target_sw.dp.ofproto_parser.OFPGroupMod):
-                target_info[RESULT_REPORT_EXPECTED_FLOW] = \
-                        [self._group_mod_to_rest(expected_target_flow, 
-                                            self.target_ofctl)]
+            expected_flow = [flow, SW_TARGET]
+            if expected_flow[1] == SW_TARGET and isinstance(
+                expected_flow[0], self.target_sw.dp.ofproto_parser.OFPFlowMod):
+                target_info[RESULT_REPORT_EXPECTED_FLOW].append(
+                    self._flow_mod_to_rest(expected_flow[0], 
+                                            self.target_ofctl))
+            elif expected_flow[1] == SW_TARGET and isinstance(
+                expected_flow[0], self.target_sw.dp.ofproto_parser.OFPMeterMod):
+                target_info[RESULT_REPORT_EXPECTED_FLOW].append(
+                    self._meter_mod_to_rest(self.target_sw.dp.ofproto_parser,
+                                            expected_flow[0], 
+                                            self.target_ofctl))
+            elif expected_flow[1] == SW_TARGET and isinstance(
+                expected_flow[0], self.target_sw.dp.ofproto_parser.OFPGroupMod):
+                target_info[RESULT_REPORT_EXPECTED_FLOW].append(
+                        self._group_mod_to_rest(expected_flow[0], 
+                                            self.target_ofctl))
             
-            if isinstance(
-                expected_tester_flow, self.tester_sw.dp.ofproto_parser.OFPFlowMod):
-                tester_info[RESULT_REPORT_EXPECTED_FLOW] = \
-                        [self._flow_mod_to_rest(expected_tester_flow, 
-                                            self.tester_ofctl)]
-            elif isinstance(
-                expected_tester_flow, self.tester_sw.dp.ofproto_parser.OFPMeterMod):
-                tester_info[RESULT_REPORT_EXPECTED_FLOW] = \
-                        [self._meter_mod_to_rest(self.tester_sw.dp.ofproto_parser,
-                                            expected_tester_flow, 
-                                            self.tester_ofctl)]
-            elif isinstance(
-                expected_tester_flow, self.tester_sw.dp.ofproto_parser.OFPGroupMod):
-                tester_info[RESULT_REPORT_EXPECTED_FLOW] = \
-                        [self._group_mod_to_rest(expected_tester_flow, 
-                                            self.tester_ofctl)]
+            elif expected_flow[1] == SW_TESTER and isinstance(
+                expected_flow[0], self.tester_sw.dp.ofproto_parser.OFPFlowMod):
+                tester_info[RESULT_REPORT_EXPECTED_FLOW].append(
+                        self._flow_mod_to_rest(expected_flow[0], 
+                                            self.tester_ofctl))
+            elif expected_flow[1] == SW_TESTER and isinstance(
+                expected_flow[0], self.tester_sw.dp.ofproto_parser.OFPMeterMod):
+                tester_info[RESULT_REPORT_EXPECTED_FLOW].append(
+                        self._meter_mod_to_rest(self.tester_sw.dp.ofproto_parser,
+                                            expected_flow[0], 
+                                            self.tester_ofctl))
+            elif expected_flow[1] == SW_TESTER and isinstance(
+                expected_flow[0], self.tester_sw.dp.ofproto_parser.OFPGroupMod):
+                tester_info[RESULT_REPORT_EXPECTED_FLOW].append(
+                        self._group_mod_to_rest(expected_flow[0], 
+                                            self.tester_ofctl))
 
             if self.target_dpid == self.tester_dpid:
-                for flow in tester_info[RESULT_REPORT_EXPECTED_FLOW]:
-                    target_info[RESULT_REPORT_EXPECTED_FLOW].append(flow)
-
                 target_info[RESULT_REPORT_REAL_FLOW] = \
                     self._test(STATE_TARGET_FLOWS,self.target_sw, self.target_ofctl)
 
@@ -1074,30 +1077,31 @@ class OfTester(app_manager.RyuApp):
             #                    STATE_FLOW_MATCH_CHK, STATE_NO_PKTIN_REASON,
             #                STATE_SEND_BARRIER, STATE_FLOW_UNMATCH_CHK,
             #                    STATE_TARGET_FLOW_COUNT_CHK] :
-                
+  
             if len(target_pkt_count) > 0:
-                target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
+                target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0][:]
                 if len(target_pkt_count) < 2 :
                     target_pkt_count.append(
                             self._test(STATE_TARGET_PKT_COUNT, True))
-                target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[1]
+                target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[1][:]
             else :
                 target_pkt_count.append(
                             self._test(STATE_TARGET_PKT_COUNT, True))
-                target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0]
-                target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[0]     
+                target_info[RESULT_REPORT_BEFORE_PORT_STATE] = target_pkt_count[0][:]
+                target_info[RESULT_REPORT_AFTER_PORT_STATE] = target_pkt_count[0][:]     
                 
             if len(tester_pkt_count) > 0:
-                tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0]
+                tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0][:]
                 if len(tester_pkt_count) < 2:
                     tester_pkt_count.append(
                         self._test(STATE_TESTER_PKT_COUNT, False))
-                tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[1]
+                tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[1][:]
             else :
                 tester_pkt_count.append(
                              self._test(STATE_TESTER_PKT_COUNT, False))
-                tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0]
-                tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[0] 
+                tester_info[RESULT_REPORT_BEFORE_PORT_STATE] = tester_pkt_count[0][:]
+                tester_info[RESULT_REPORT_AFTER_PORT_STATE] = tester_pkt_count[0][:]
+
 
             if self.target_dpid == self.tester_dpid:
                 for state in tester_info[RESULT_REPORT_BEFORE_PORT_STATE]:
@@ -1110,7 +1114,7 @@ class OfTester(app_manager.RyuApp):
             else:
                 report[RESULT_REPORT_SW_INFO][self.target_dpid] = target_info
                 report[RESULT_REPORT_SW_INFO][self.tester_dpid] = tester_info
-                    
+            
             report[RESULT_REPORT_PORT_LINK_STATE] = self._get_port_link_status()
             report[RESULT_REPORT_SEND_PORT] = {
                         "name": TESTER_SEND_PORT,
@@ -1423,15 +1427,14 @@ class OfTester(app_manager.RyuApp):
         ng_stats = []
         for msg in self.rcv_msgs:
             assert isinstance(msg, method_dict[method.__name__]['reply'])
+           
             for stats in msg.body:
-                
                 result, stats = method_dict[method.__name__]['compare'](
                     stats, message)
                 if result:
                     return
                 else:
                     ng_stats.append(stats)
-
         error_dict = {
             OpenFlowSw.send_flow_stats.__name__:
                 {'flows': ', '.join(ng_stats)},
@@ -1482,9 +1485,9 @@ class OfTester(app_manager.RyuApp):
             if attr == 'instructions':
                 value1 = sorted(value1)
                 value2 = sorted(value2)
-
                 if len(value1) == 0:
-                    if len(value2[0].actions) == 0:
+                    if len(value2) == 0 or \
+                        len(value2[0].actions) == 0:
                         value2 = []
             elif attr == 'match':
                 value1 = sorted(__reasm_match(value1))
