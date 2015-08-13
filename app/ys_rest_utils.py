@@ -34,6 +34,7 @@ from ryu.controller.handler import set_ev_cls
 from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import packet
 from ryu.lib.packet import arp
+from ryu.lib.packet import vlan
 from ryu.lib import addrconv
 from ryu.lib import dpid as dpid_lib
 from ryu.lib import hub
@@ -47,27 +48,29 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.ofproto import ether
 from webob import Response
 
+
 # =============================
 #          REST API
 # =============================
 #
-# * test 
-# POST /rtt/switch
-# POST /rtt/pc
+# * ping 
+# POST /utils/rtt/ping
 #
-# parameter = { "sender" : {"dpid": "0000000000000001", 
-#                           "port": 1},
-#              "target": {"port": 1,
-#                           "vlan": 2,
-#                           "mac": "00:01:02:03:04:05",
-#                           "ip": "192.168.1.1"}
-#              }
+# parameter = {"sender":{"dpid":"0000000000000001",
+#                        "ip":"192.168.1.3",
+#                        "port":1},
+#              "target":{"vlan":100,  # vlan = -1 (no vlan)
+#                        "mac":"00:01:02:03:04:05",
+#                        "ip":"192.168.1.1"}
 #
+# * get dpid ip
+# GET /utils/dpid/desc
 #
-#
+VLAN = vlan.vlan.__name__
 ARP = arp.arp.__name__
 ARP_REQUEST = arp.ARP_REQUEST
 ARP_REPLY = arp.ARP_REPLY
+
 
 PKT_LIB_PATH = 'ryu.lib.packet'
 for modname, moddef in sys.modules.iteritems():
@@ -87,8 +90,8 @@ KEY_TYPE = "type"
 KEY_SENDER = "sender"
 KEY_SENDER_DPID = "dpid"
 KEY_SENDER_PORT = "port"
+KEY_SENDER_IP = "ip"
 KEY_TARGET = "target"
-KEY_TARGET_PORT = "port"
 KEY_TARGET_VLAN = "vlan"
 KEY_TARGET_IP = "ip"
 KEY_TARGET_MAC = "mac"
@@ -96,8 +99,7 @@ KEY_TARGET_MAC = "mac"
 
 PKT_INGRESS = "ingress"
 PKT_EGRESS = "egress"
-SENDER_MAC = "12:11:11:11:11:11"
-SENDER_IP =  "192.168.10.10"
+
 VLANID_NONE = 0
 
 WAIT_TIMER = 1  # sec
@@ -121,6 +123,12 @@ RES_EXECUTE_STATE = "execute_state"
 RES_EXECUTE_STATE_OK = "OK"
 RES_EXECUTE_STATE_FAILURE = "FAILURE(%s)"
 
+RES_SW_DPID = "dpid"
+RES_SW_IP = "ip"
+RES_SW_PORT = "port"
+
+SWITCHID_PATTERN = dpid_lib.DPID_PATTERN + r'|all'
+
 
 class NotFoundError(RyuException):
     message = 'Router SW is not connected. : switch_id=%(switch_id)s'
@@ -140,14 +148,14 @@ class RestRTTAPI(app_manager.RyuApp):
         super(RestRTTAPI, self).__init__(*args, **kwargs)
 
         # logger configure
-        RTTController.set_logger(self.logger)
+        UtilsController.set_logger(self.logger)
 
         wsgi = kwargs['wsgi']
         self.waiters = {}
         self.data = {'waiters': self.waiters}
 
         mapper = wsgi.mapper
-        wsgi.registory['RTTController'] = self.data
+        wsgi.registory['UtilsController'] = self.data
         
         self.switch_list = {}
 
@@ -157,17 +165,18 @@ class RestRTTAPI(app_manager.RyuApp):
         # For database
         requirements = {}
 
-        path = '/rtt/switch'
-        mapper.connect('router', path, controller=RTTController,
+
+        path = '/utils/ping'
+        mapper.connect('utils', path, controller=UtilsController,
                         requirements=requirements,
-                        action='test_switch',
+                        action='utils_ping',
                         conditions=dict(method=['POST']))
 
-        path = '/rtt/pc'
-        mapper.connect('router', path, controller=RTTController,
+        path = '/utils/datapath/desc'
+        mapper.connect('utils', path, controller=UtilsController,
                         requirements=requirements,
-                        action='test_pc',
-                        conditions=dict(method=['POST']))
+                        action='utils_datapath_desc',
+                        conditions=dict(method=['GET']))
 
 
 
@@ -178,15 +187,15 @@ class RestRTTAPI(app_manager.RyuApp):
         if ev.state == handler.MAIN_DISPATCHER:
             self.evnet_ofp_state_change = ev.state
             if ev.datapath.id is not None:
-                RTTController.register(ev.datapath)
+                UtilsController.register(ev.datapath)
         elif ev.state == handler.DEAD_DISPATCHER:
             self.evnet_ofp_state_change = ev.state
             if ev.datapath.id is not None:
-                RTTController.unregister(ev.datapath)    
+                UtilsController.unregister(ev.datapath)    
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, handler.MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
-        RTTController.packet_in_handler(ev.msg)
+        UtilsController.packet_in_handler(ev.msg)
         
 
     @set_ev_cls([ofp_event.EventOFPFlowStatsReply],handler.MAIN_DISPATCHER)
@@ -220,7 +229,7 @@ def rest_command(func):
 
     return _rest_command
 
-class RTTController(ControllerBase):
+class UtilsController(ControllerBase):
     _SWITCH_LIST = {}
     _LOGGER = None
     _SENDER = None
@@ -229,7 +238,7 @@ class RTTController(ControllerBase):
     _PKT = None
 
     def __init__(self, req, link, data, **config):
-        super(RTTController, self).__init__(req, link, data, **config)
+        super(UtilsController, self).__init__(req, link, data, **config)
         self.waiters = data['waiters']
 
     @classmethod
@@ -291,8 +300,6 @@ class RTTController(ControllerBase):
         cls._WAITER = None
         return timeout
 
-
-
     @classmethod
     def packet_in_handler(cls, msg):
         def _parser_header(data):
@@ -339,51 +346,62 @@ class RTTController(ControllerBase):
                 raise ValueError('invalid format: "%s" field' % PKT_EGRESS)
         return test_pkt
 
-    @rest_command
-    def test_switch(self, req):
-        try :
-            rest_param = req.body
-            ujson_parm = json.loads(rest_param) if rest_param else {}
-            parm = ast.literal_eval(json.dumps(ujson_parm))
-
-            sender_port = parm[KEY_SENDER][KEY_SENDER_PORT]
-            sender_id = int(parm[KEY_SENDER][KEY_SENDER_DPID],16)
-            target_port = parm[KEY_TARGET][KEY_TARGET_PORT]
-            target_vlan = parm[KEY_TARGET][KEY_TARGET_VLAN]
-            target_mac = parm[KEY_TARGET][KEY_TARGET_MAC]
-            target_ip = parm[KEY_TARGET][KEY_TARGET_IP]
-
-            packet = {
-                "ingress":["ethernet(dst='%s', src='12:11:11:11:11:11', ethertype=33024)" % (target_mac),
-                    "vlan(pcp=3, cfi=0, vid=%d, ethertype=2048)" % (target_vlan),
-                    "ipv4(tos=32, proto=1, src='192.168.10.10', dst='%s', ttl=64)" % (target_ip),
+    def _get_vlan_icmp_packet(self,sender_mac, sender_ip, target_mac, target_ip, target_vlan):
+        packet = {
+                "ingress":["ethernet(dst='%s', src='%s', ethertype=33024)" % (target_mac, sender_mac),
+                    "vlan(pcp=0, cfi=0, vid=%d, ethertype=2048)" % (target_vlan),
+                    "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
                     "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
                 ],
-                "egress":["ethernet(dst='%s', src='12:11:11:11:11:11', ethertype=33024)" % (target_mac),
-                    "vlan(pcp=3, cfi=0, vid=%d, ethertype=2048)" % (target_vlan),
-                    "ipv4(tos=32, proto=1, src='192.168.10.10', dst='%s', ttl=64)" % (target_ip),
+                "egress":["ethernet(dst='%s', src='%s', ethertype=33024)" % (target_mac, sender_mac),
+                    "vlan(pcp=0, cfi=0, vid=%d, ethertype=2048)" % (target_vlan),
+                    "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
                     "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
                 ]
             }
-            return self._execute_rtt(packet, sender_id, sender_port)
+        return packet
 
-        except NotFoundError as err:
-            status = RES_EXECUTE_STATE_FAILURE % str(err)
+    def _get_icmp_packet(self,sender_mac, sender_ip, target_mac, target_ip):
+        packet = {
+                "ingress":["ethernet(dst='%s', src='%s', ethertype=2048)" % (target_mac, sender_mac),
+                    "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
+                    "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
+                    ],
+                "egress":["ethernet(dst='%s', src='%s', ethertype=2048)" % (target_mac, sender_mac),
+                    "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
+                    "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
+                    ]
+                }
+        return packet
+
+    def _get_mac(self,sender_id, sender_port):
+        dp = self._SWITCH_LIST[sender_id]
+        if dp.ports.has_key(sender_port):
+            return dp.ports[sender_port].hw_addr
+
+
+    @rest_command
+    def utils_datapath_desc(self, req):
+        try :
+            report = []
+            for sw in self._SWITCH_LIST:
+                report.append({
+                    RES_SW_DPID: dpid_lib.dpid_to_str(sw),
+                    RES_SW_IP: self._SWITCH_LIST[sw].address[0],
+                    RES_SW_PORT : self._SWITCH_LIST[sw].address[1]
+                })
+            return {  RES_EXECUTE_STATE: RES_EXECUTE_STATE_OK,
+                      RES_DETAILS : report}
         except Exception as err:
             msg = "type=%s, msg=%s" % (type(err), str(err))
             status = RES_EXECUTE_STATE_FAILURE % msg
 
         return {  RES_EXECUTE_STATE: status,
-                    RES_MAX_TIME: 0,
-                    RES_MIN_TIME: 0,
-                    RES_AVG_TIME: 0,
-                    RES_RECEIVED: 0,
-                    RES_TRANSMITTED: 0,
-                    RES_PACKET_LOSS: "100%",
-                    RES_DETAILS : []}
+                 RES_DETAILS : {}}
+
 
     @rest_command
-    def test_pc(self, req):
+    def utils_ping(self, req):
         try :
             rest_param = req.body
             ujson_parm = json.loads(rest_param) if rest_param else {}
@@ -391,22 +409,19 @@ class RTTController(ControllerBase):
 
             sender_port = parm[KEY_SENDER][KEY_SENDER_PORT]
             sender_id = int(parm[KEY_SENDER][KEY_SENDER_DPID],16)
-            target_port = parm[KEY_TARGET][KEY_TARGET_PORT]
+            sender_ip = parm[KEY_SENDER][KEY_SENDER_IP]
             target_vlan = parm[KEY_TARGET][KEY_TARGET_VLAN]
             target_mac = parm[KEY_TARGET][KEY_TARGET_MAC]
             target_ip = parm[KEY_TARGET][KEY_TARGET_IP]
+            sender_mac = self._get_mac(sender_id, sender_port)
 
-            packet = {
-                "ingress":["ethernet(dst='%s', src='12:11:11:11:11:11', ethertype=2048)" % (target_mac),
-                    "ipv4(tos=32, proto=1, src='192.168.0.10', dst='%s', ttl=64)" % (target_ip),
-                    "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
-                    ],
-                "egress":["ethernet(dst='%s', src='12:11:11:11:11:11', ethertype=2048)" % (target_mac),
-                    "ipv4(tos=32, proto=1, src='192.168.0.10', dst='%s', ttl=64)" % (target_ip),
-                    "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
-                    ]
-                }
-
+            if target_vlan == -1 :
+                packet = self._get_icmp_packet(sender_mac, sender_ip,
+                                            target_mac, target_ip)
+            else:
+                packet = self._get_vlan_icmp_packet(sender_mac, sender_ip, 
+                                            target_mac, target_ip, target_vlan)
+            
             return self._execute_rtt(packet, sender_id, sender_port)
 
         except NotFoundError as err:
@@ -423,7 +438,6 @@ class RTTController(ControllerBase):
                     RES_TRANSMITTED: 0,
                     RES_PACKET_LOSS: "100%",
                     RES_DETAILS : []}
-
 
     def _execute_rtt(self, packet, sender_id, sender_port):
         times = 5
@@ -468,7 +482,7 @@ class RTTController(ControllerBase):
                 received = received + 1
 
             result.append({  RES_PKT_STATE: state,
-                                RES_PKT_TIME:rtt*1000})
+                                RES_PKT_TIME:rtt*1000 if rtt != -1 else -1})
 
 
         return {  RES_EXECUTE_STATE: RES_EXECUTE_STATE_OK,
@@ -489,6 +503,9 @@ class Sender(dict):
         self.sw_id = {'sw_id': self.dpid_str}
         self.logger = logger
         self.port = port
+
+    def _get_mac(self,port):
+        return self.dp.ports[port].hw_addr
 
     def get_dpid(self):
         return self.dp.id
@@ -529,12 +546,17 @@ class Sender(dict):
         if header_list[ARP].opcode == ARP_REQUEST:
             # ARP request to router port -> send ARP reply
             src_mac = header_list[ARP].src_mac
-            dst_mac = SENDER_MAC
+            dst_mac = self._get_mac(self.port)
             arp_target_mac = dst_mac
             output = in_port
             in_port = self.dp.ofproto.OFPP_CONTROLLER
 
-            self._send_arp(ARP_REPLY, 0,
+            if VLAN in header_list:
+                vlan_id = header_list[VLAN].vid
+            else :
+                vlan_id = VLANID_NONE
+
+            self._send_arp(ARP_REPLY, vlan_id ,
                                 dst_mac, src_mac, dst_ip, src_ip,
                                 arp_target_mac, in_port, output)
 
@@ -547,11 +569,11 @@ class Sender(dict):
                  src_ip, dst_ip, arp_target_mac, in_port, output):
             # Generate ARP packet
             if vlan_id != VLANID_NONE:
-                ether_proto = eth_er.ETH_TYPE_8021Q
+                ether_proto = ether.ETH_TYPE_8021Q
                 pcp = 0
                 cfi = 0
                 vlan_ether = ether.ETH_TYPE_ARP
-                v = vlan.vlan(pcp, cfi, vlan_id, vlan_ether)
+                v = vlan(pcp, cfi, vlan_id, vlan_ether)
             else:
                 ether_proto = ether.ETH_TYPE_ARP
             hwtype = 1
