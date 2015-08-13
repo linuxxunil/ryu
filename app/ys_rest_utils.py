@@ -35,6 +35,7 @@ from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import packet
 from ryu.lib.packet import arp
 from ryu.lib.packet import vlan
+from ryu.lib.packet import icmp
 from ryu.lib import addrconv
 from ryu.lib import dpid as dpid_lib
 from ryu.lib import hub
@@ -68,6 +69,7 @@ from webob import Response
 #
 VLAN = vlan.vlan.__name__
 ARP = arp.arp.__name__
+ICMP_ = icmp.icmp.__name__
 ARP_REQUEST = arp.ARP_REQUEST
 ARP_REPLY = arp.ARP_REPLY
 
@@ -98,7 +100,8 @@ KEY_TARGET_MAC = "mac"
 
 
 PKT_INGRESS = "ingress"
-PKT_EGRESS = "egress"
+ICMP_DATA="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL"
+
 
 VLANID_NONE = 0
 
@@ -128,6 +131,7 @@ RES_SW_IP = "ip"
 RES_SW_PORT = "port"
 
 SWITCHID_PATTERN = dpid_lib.DPID_PATTERN + r'|all'
+
 
 
 class NotFoundError(RyuException):
@@ -274,10 +278,14 @@ class UtilsController(ControllerBase):
 
     @classmethod
     def _compare(cls, data):
-        if len(data) == len(cls._PKT[PKT_EGRESS]):
-            return True
-        return False
-    
+        header_list, pkt = cls._parser_header(data)
+        if ICMP_ in header_list:
+            _icmp = pkt.get_protocols(icmp)[0]
+            _data = _icmp.data.data
+            if _data ==  ICMP_DATA:
+                return True
+            return False
+           
     @classmethod
     def _wait(cls):
         """ Wait until specific OFP message received
@@ -301,16 +309,17 @@ class UtilsController(ControllerBase):
         return timeout
 
     @classmethod
-    def packet_in_handler(cls, msg):
-        def _parser_header(data):
-            pkt = packet.Packet(msg.data)
+    def _parser_header(cls, data):
+            pkt = packet.Packet(data)
             # TODO: Packet library convert to string
             # self.logger.debug('Packet in = %s', str(pkt), self.sw_id)
             header_list = dict((p.protocol_name, p)
                            for p in pkt.protocols if type(p) != str)
-            return header_list
+            return header_list, pkt
 
-        header_list = _parser_header(msg.data)
+    @classmethod
+    def packet_in_handler(cls, msg):
+        header_list, pkt = cls._parser_header(msg.data)
         if ARP in header_list:
             cls._SENDER.handle_arp(msg, header_list)
         else:
@@ -337,13 +346,6 @@ class UtilsController(ControllerBase):
             test_pkt[PKT_INGRESS] = __test_pkt_from_json(test[PKT_INGRESS])                
         else:
             raise ValueError('invalid format: "%s" field' % PKT_INGRESS)
-        # parse 'egress' or 'PACKET_IN' or 'table-miss'
-        if PKT_EGRESS in test:
-            if isinstance(test[PKT_EGRESS], list):
-                test_pkt[PKT_EGRESS] = __test_pkt_from_json(
-                        test[PKT_EGRESS])
-            else:
-                raise ValueError('invalid format: "%s" field' % PKT_EGRESS)
         return test_pkt
 
     def _get_vlan_icmp_packet(self,sender_mac, sender_ip, target_mac, target_ip, target_vlan):
@@ -351,12 +353,7 @@ class UtilsController(ControllerBase):
                 "ingress":["ethernet(dst='%s', src='%s', ethertype=33024)" % (target_mac, sender_mac),
                     "vlan(pcp=0, cfi=0, vid=%d, ethertype=2048)" % (target_vlan),
                     "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
-                    "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
-                ],
-                "egress":["ethernet(dst='%s', src='%s', ethertype=33024)" % (target_mac, sender_mac),
-                    "vlan(pcp=0, cfi=0, vid=%d, ethertype=2048)" % (target_vlan),
-                    "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
-                    "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
+                    "icmp(code=0,csum=0,data=echo(data='%s'),type_=8)" % ICMP_DATA
                 ]
             }
         return packet
@@ -365,11 +362,7 @@ class UtilsController(ControllerBase):
         packet = {
                 "ingress":["ethernet(dst='%s', src='%s', ethertype=2048)" % (target_mac, sender_mac),
                     "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
-                    "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
-                    ],
-                "egress":["ethernet(dst='%s', src='%s', ethertype=2048)" % (target_mac, sender_mac),
-                    "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
-                    "icmp(code=0,csum=0,data=echo(data='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL'),type_=8)"
+                    "icmp(code=0,csum=0,data=echo(data='%s'),type_=8)" % ICMP_DATA
                     ]
                 }
         return packet
