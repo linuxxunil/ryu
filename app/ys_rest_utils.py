@@ -411,11 +411,12 @@ class UtilsController(ControllerBase):
             if target_vlan == -1 :
                 packet = self._get_icmp_packet(sender_mac, sender_ip,
                                             target_mac, target_ip)
+                return self._execute_rtt(packet, sender_id, sender_port)
             else:
                 packet = self._get_vlan_icmp_packet(sender_mac, sender_ip, 
                                             target_mac, target_ip, target_vlan)
             
-            return self._execute_rtt(packet, sender_id, sender_port)
+                return self._execute_rtt(packet, sender_id, sender_port, target_vlan)
 
         except NotFoundError as err:
             status = RES_EXECUTE_STATE_FAILURE % str(err)
@@ -432,7 +433,7 @@ class UtilsController(ControllerBase):
                     RES_PACKET_LOSS: "100%",
                     RES_DETAILS : []}
 
-    def _execute_rtt(self, packet, sender_id, sender_port):
+    def _execute_rtt(self, packet, sender_id, sender_port, vlan_vid=VLANID_NONE):
         times = 5
         max_time = 0
         min_time = WAIT_TIMER + 1
@@ -448,8 +449,11 @@ class UtilsController(ControllerBase):
         self.set_sender(sender)
 
         # add flow entry
-        sender.add_flow(sender_port)
-            
+        if vlan_vid == VLANID_NONE:
+            sender.add_flow(sender_port)
+        else:
+            sender.add_flow(sender_port, vlan_vid)
+
         # transfer packet
         data = self._get_pkt(packet)
         self.set_pkt(data)
@@ -503,12 +507,15 @@ class Sender(dict):
     def get_dpid(self):
         return self.dp.id
 
-    def add_flow(self, in_port):
+    def add_flow(self, in_port, vlan_vid=VLANID_NONE):
         datapath = self.dp
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        match = parser.OFPMatch(in_port=in_port)
+        if vlan_vid == VLANID_NONE:
+            match = parser.OFPMatch(in_port=in_port)
+        else:
+            match = parser.OFPMatch(in_port=in_port, vlan_vid=vlan_vid)
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
 
@@ -545,11 +552,11 @@ class Sender(dict):
             in_port = self.dp.ofproto.OFPP_CONTROLLER
 
             if VLAN in header_list:
-                vlan_id = header_list[VLAN].vid
+                vlan_vid = header_list[VLAN].vid
             else :
-                vlan_id = VLANID_NONE
+                vlan_vid = VLANID_NONE
 
-            self._send_arp(ARP_REPLY, vlan_id ,
+            self._send_arp(ARP_REPLY, vlan_vid ,
                                 dst_mac, src_mac, dst_ip, src_ip,
                                 arp_target_mac, in_port, output)
 
@@ -558,15 +565,15 @@ class Sender(dict):
             self.logger.info('Send ARP reply to [%s]', srcip,
                                  extra=self.sw_id)
 
-    def _send_arp(self, arp_opcode, vlan_id, src_mac, dst_mac,
+    def _send_arp(self, arp_opcode, vlan_vid, src_mac, dst_mac,
                  src_ip, dst_ip, arp_target_mac, in_port, output):
             # Generate ARP packet
-            if vlan_id != VLANID_NONE:
+            if vlan_vid != VLANID_NONE:
                 ether_proto = ether.ETH_TYPE_8021Q
                 pcp = 0
                 cfi = 0
                 vlan_ether = ether.ETH_TYPE_ARP
-                v = vlan(pcp, cfi, vlan_id, vlan_ether)
+                v = vlan(pcp, cfi, vlan_vid, vlan_ether)
             else:
                 ether_proto = ether.ETH_TYPE_ARP
             hwtype = 1
@@ -579,7 +586,7 @@ class Sender(dict):
             a = arp(hwtype, arp_proto, hlen, plen, arp_opcode,
                     src_mac, src_ip, arp_target_mac, dst_ip)
             pkt.add_protocol(e)
-            if vlan_id != VLANID_NONE:
+            if vlan_vid != VLANID_NONE:
                 pkt.add_protocol(v)
             pkt.add_protocol(a)
             pkt.serialize()
