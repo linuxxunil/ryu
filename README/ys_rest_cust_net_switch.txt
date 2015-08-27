@@ -1,0 +1,54 @@
+1. 描述： Switch會分辨Staff和Customer分別配送至定義的網路
+2. 接法：
+
+
+       +-----+                      +-----+
+       | PC1 |                      | PC2 |   
+       +-----+                      +-----+        
+     (10.0.0.2)                    (11.0.0.2)  
+          |                            | 
+     (10.0.0.1)                    (11.0.0.1)
+    +------------+               +------------+
+    |  Network 1 |Router         |  Network 2 | Router 
+    +------------+               +------------+ 
+    ( 192.168.1.1)               (192.168.2.1)
+         |       \(:01)    (:02)/        |   
+( 192.168.1.2)    \            /       (192.168.2.2)
+    +----+      +----------------+       +----+
+    |DHCP|      |   switch       |       |DHCP|
+    +----+      +----------------+       +----+
+                 /(:03)    (:04)\  
+    +------------+               +------------+
+    |  Staff     |               |  Customer  |     
+    +------------+               +------------+
+
+           
+--------TEST STEP--------
+1. start router
+#ryu-manager ryu.app.ofctl_rest ryu.app.rest_router --ofp-tcp-listen-port 6644 --wsapi-port 8081
+
+2. start customer network
+#ryu-manager ryu.app.ys_rest_cust_net_switch ryu.app.ofctl_rest
+
+3. start mininet
+#cd ryu/mininet_sample; ./sample_mn_cust_net_switch.py
+
+4. staff get ip in mininet
+mininet>stf1 dhclient stf1-eth0
+
+5. customer get ip in mininet
+mininet>cus1 dhclient cus1-eth0
+
+6. check ip
+mininet> stf1 ip a
+	show >> ip = 192.168.1.10
+
+mininet> cus1 ip a
+	show >> ip = 192.168.2.10
+
+7. check ping internet
+mininet>stf1 ping net1_h1
+mininet>cus1 pint net2_h1
+
+8. check ping LAN
+mininet>stf1 ping cus1
