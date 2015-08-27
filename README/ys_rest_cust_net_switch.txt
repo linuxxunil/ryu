@@ -24,6 +24,11 @@
 
            
 --------TEST STEP--------
+0. copy dhcp config
+#apt-get
+#cp ryu/mininet_sample/dhcpd1.conf /etc/dhcpd.conf
+#cp ryu/mininet_sample/dhcpd2.conf /etc/dhcp/dhcpd.conf
+
 1. start router
 #ryu-manager ryu.app.ofctl_rest ryu.app.rest_router --ofp-tcp-listen-port 6644 --wsapi-port 8081
 
@@ -48,7 +53,7 @@ mininet> cus1 ip a
 
 7. check ping internet
 mininet>stf1 ping net1_h1
-mininet>cus1 pint net2_h1
+mininet>cus1 ping net2_h1
 
 8. check ping LAN
 mininet>stf1 ping cus1
