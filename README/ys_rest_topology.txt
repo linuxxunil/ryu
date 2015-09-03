@@ -18,7 +18,7 @@
 
 --------TEST STEP--------
 1. start controller 1
-#ryu-manager --verbose --observe-links --install-lldp-flow ryu.app.ys_rest_topology
+#ryu-manager --verbose --observe-links --install-lldp-flow ryu.app.ys_rest_topology ryu.app.ofctl_rest
 
 2. start controoler 2 
 #ryu-manager --verbose --observe-links --install-lldp-flow ryu.app.ys_rest_topology --wsapi-port 8081 --ofp-tcp-listen-port 6644
