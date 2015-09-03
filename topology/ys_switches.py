@@ -500,9 +500,13 @@ class Switches(app_manager.RyuApp):
         self.links = LinkState()      # Link class -> timestamp
         self.is_active = True
 
-        # by jesse : for controller link
+        # by jesse : for other controller link
         self.cports = PortDataState()
         self.clinks = LinkState()
+
+        # by jesse : for same switch port link (in_port == out_port)
+        self.sports = PortDataState()
+        self.slinks = LinkState()
 
         self.link_discovery = self.CONF.observe_links
         if self.link_discovery:
@@ -772,12 +776,10 @@ class Switches(app_manager.RyuApp):
         src = self._get_port(src_dpid, src_port_no)
         
         if not src: # by jesse : save other controller link
-               
             dst_port = self._get_port(dst_dpid, dst_port_no)
             if not dst_port:
                 # remove link
                 return
-
             try:
                 self.ports.lldp_received(dst_port)
             except KeyError:
@@ -793,6 +795,9 @@ class Switches(app_manager.RyuApp):
             self.lldp_event.set()
             return
         elif src.dpid == dst_dpid:
+            src_port = self._get_port(src.dpid, src_port_no)
+            dst_port = self._get_port(dst_dpid, dst_port_no)
+            self.slinks.update_link(dst_port, src_port)
             return
         try:
             self.ports.lldp_received(src)
@@ -906,6 +911,7 @@ class Switches(app_manager.RyuApp):
             now = time.time()
             deleted = []
             cdeleted = []
+            sdeleted = []
  
             # by jesse
             for (link, timestamp) in self.clinks.items():
@@ -916,6 +922,17 @@ class Switches(app_manager.RyuApp):
             
             for link in cdeleted:
                 self.clinks.link_down(link)
+                self.lldp_event.set()
+
+            # by jesse
+            for (link, timestamp) in self.slinks.items():
+                if timestamp + self.LINK_TIMEOUT < now:
+                    src = link.src
+                    if src in self.ports:
+                        sdeleted.append(link)
+            
+            for link in sdeleted:
+                self.slinks.link_down(link)
                 self.lldp_event.set()
 
             for (link, timestamp) in self.links.items():
@@ -984,6 +1001,18 @@ class Switches(app_manager.RyuApp):
         else:
             links = [clink for link in self.clinks if link.src.dpid == dpid]
         rep = event.EventCLinkReply(req.src, dpid, self.clinks)
+        self.reply_to_request(req, rep)
+
+
+    @set_ev_cls(event.EventSLinkRequest)
+    def slink_request_handler(self, req):
+        # LOG.debug(req)
+        dpid = req.dpid
+        if dpid is None:
+            links = self.slinks
+        else:
+            links = [slinks for link in self.slinks if link.src.dpid == dpid]
+        rep = event.EventSLinkReply(req.src, dpid, self.slinks)
         self.reply_to_request(req, rep)
 
     # by jesse

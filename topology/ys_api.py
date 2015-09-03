@@ -34,13 +34,18 @@ def get_link(app, dpid=None):
 def get_all_link(app):
     return get_link(app)
 
-# by jesse
+# by jesse : clink request
 def get_clink(app, dpid=None):
 	rep = app.send_request(event.EventCLinkRequest(dpid))
 	return rep.links
 
+# by jesse : slink request
+def get_slink(app, dpid=None):
+	rep = app.send_request(event.EventSLinkRequest(dpid))
+	return rep.links
 
-# by jesse
+
+# by jesse : lldp interval
 def get_lldp_interval(app, method):
 	rep = app.send_request(event.EventLLDPRequest(method))
 	return rep.interval 

@@ -20,7 +20,7 @@ from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.base import app_manager
 from ryu.lib import dpid as dpid_lib
 from ryu.topology.ys_api import get_switch, get_link, get_clink, \
-                        get_lldp_interval, set_lldp_interval
+                        get_lldp_interval, set_lldp_interval, get_slink
 
 # REST API for switch configuration
 #
@@ -42,6 +42,10 @@ from ryu.topology.ys_api import get_switch, get_link, get_clink, \
 # by jesse add
 # get the links of switch of other controller
 # GET /v1.0/topology/clinks
+#
+# by jesse add
+# get the links of switch of same controller
+# GET /v1.0/topology/slinks
 #
 # get interval value for lldp 
 # GET /v1.0/topology/lldp
@@ -96,6 +100,12 @@ class TopologyController(ControllerBase):
     def list_clinks(self, req, **kwargs):
         return self._clinks(req, **kwargs)
 
+    # by jesse
+    @route('topology', '/v1.0/topology/slinks',
+           methods=['GET'])
+    def list_slinks(self, req, **kwargs):
+        return self._slinks(req, **kwargs)
+
     #@route('topology', '/v1.0/topology/clinks/{dpid}',
     #       methods=['GET'], requirements={'dpid': dpid_lib.DPID_PATTERN})
     #def get_clinks(self, req, **kwargs):
@@ -134,6 +144,16 @@ class TopologyController(ControllerBase):
         #if 'dpid' in kwargs:
         #   dpid = dpid_lib.str_to_dpid(kwargs['dpid'])
         links = get_clink(self.topology_api_app, dpid)
+        body = json.dumps([link.to_dict() for link in links])
+        return Response(content_type='application/json', body=body)
+
+
+    # by jesse
+    def _slinks(self, req, **kwargs):
+        dpid = None
+        #if 'dpid' in kwargs:
+        #   dpid = dpid_lib.str_to_dpid(kwargs['dpid'])
+        links = get_slink(self.topology_api_app, dpid)
         body = json.dumps([link.to_dict() for link in links])
         return Response(content_type='application/json', body=body)
 

@@ -128,7 +128,7 @@ class EventLinkReply(event.EventReplyBase):
             (self.dst, self.dpid, len(self.links))
 
 
-# by jesse
+# by jesse : clink request
 class EventCLinkRequest(event.EventRequestBase):
     # If dpid is None, reply all list
     def __init__(self, dpid=None):
@@ -140,9 +140,34 @@ class EventCLinkRequest(event.EventRequestBase):
         return 'EventCLinkRequest<src=%s, dpid=%s>' % \
             (self.src, self.dpid)
 
+# by jesse : clink response
 class EventCLinkReply(event.EventReplyBase):
     def __init__(self, dst, dpid, links):
         super(EventCLinkReply, self).__init__(dst)
+        self.dpid = dpid
+        self.links = links
+
+    def __str__(self):
+        return 'EventLinkReply<dst=%s, dpid=%s, links=%s>' % \
+            (self.dst, self.dpid, len(self.links))
+
+
+# by jesse : slink request
+class EventSLinkRequest(event.EventRequestBase):
+    # If dpid is None, reply all list
+    def __init__(self, dpid=None):
+        super(EventSLinkRequest, self).__init__()
+        self.dst = 'switches'
+        self.dpid = dpid
+
+    def __str__(self):
+        return 'EventCLinkRequest<src=%s, dpid=%s>' % \
+            (self.src, self.dpid)
+
+# by jesse : slink response
+class EventSLinkReply(event.EventReplyBase):
+    def __init__(self, dst, dpid, links):
+        super(EventSLinkReply, self).__init__(dst)
         self.dpid = dpid
         self.links = links
 
