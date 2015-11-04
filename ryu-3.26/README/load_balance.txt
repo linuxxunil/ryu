@@ -1,0 +1,26 @@
+1. server與loadbalance必須是同網段
+2. 必須指定gateway
+3. 必須是串接
+
+--------TEST STEP--------
+0. env 
+
+h1 --- router --- switch(LB) --- echo_server1
+h2 -|                         |- echo_server2
+
+1. start mininet
+#cd ryu/mininet_sample; ./sample_mn_load_balance.py
+
+2. start ryu
+#ryu-manager ryu.app.ys_rest_router
+
+3. set router
+#cd ryu/mininet_sample; ./sample_rest_load_balance.sh
+
+3. start loadbalance
+#cd ryu/load_balance
+#vim profile.json
+#python load_balance.py &
+
+4. execute command in mininet 
+h1 telent 192.168.2.254 80 

@@ -1,0 +1,38 @@
+1. 描述： 可取得不同Contoller間的Switch加法
+2. 接法： 
+    * S1/S4 connect to c1 (controller 1)
+    * S2/S3 connect to c2 (controller 2)
+
+
+       +----+         +----+
+       | S1 |---------| S2 |   
+       +----+         +----+        
+          |              |  
++----+    |              |   +----+
+| C1 |    |              |   | C2 |   
++----+    |              |   +----+  
+          |              |    
+       +----+         +----+
+       | S4 |         | S3 |   
+       +----+         +----+  
+
+--------TEST STEP--------
+1. start controller 1
+#ryu-manager --verbose --observe-links --install-lldp-flow ryu.app.ys_rest_topology ryu.app.ofctl_rest
+
+2. start controoler 2 
+#ryu-manager --verbose --observe-links --install-lldp-flow ryu.app.ys_rest_topology --wsapi-port 8081 --ofp-tcp-listen-port 6644
+
+3. start mininet
+#cd ryu/mininet_sample; ./sample_mn_topology.py
+
+4. get link from controller 
+#curl http://ubuntu:8080/v1.0/topology/links
+#curl http://ubuntu:8081/v1.0/topology/links
+
+5. get clink for other controller 
+#curl http://ubuntu:8080/v1.0/topology/clinks
+#curl http://ubuntu:8081/v1.0/topology/clinks
+
+5. get link for same controller
+#curl http://ubuntu:8080/v1.0/topology/slinks
