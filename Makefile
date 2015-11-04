@@ -6,7 +6,7 @@ all:install_python install_package install_ryu install_exe
 install_python:
 	apt-get install python-eventlet python-routes python-webob python-paramiko python-pkg-resources
 install_ryu:
-	cp -af ryu $(DIST-PACKAGES-PATH)
+	cp -af ryu-$(VER) $(DIST-PACKAGES-PATH)/ryu
 	cp -af ryu-$(VER).egg-info $(DIST-PACKAGES-PATH)
 
 install_package:
