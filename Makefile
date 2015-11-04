@@ -1,16 +1,20 @@
-VER=3.26
+VER=3.20
 
 DIST-PACKAGES-PATH=/usr/local/lib/python2.7/dist-packages
+PWD=$(shell pwd)
 
 all:install_python install_package install_ryu install_exe
 install_python:
 	apt-get install python-eventlet python-routes python-webob python-paramiko python-pkg-resources
 install_ryu:
-	cp -af ryu-3.20 $(DIST-PACKAGES-PATH)
-	cp -af ryu-3.20.egg-info $(DIST-PACKAGES-PATH)
-	cp -af ryu-3.26 $(DIST-PACKAGES-PATH)
-	cp -af ryu-3.26.egg-info $(DIST-PACKAGES-PATH)
-	ln -sf $(DIST-PACKAGES-PATH)/ryu-$(VER) $(DIST-PACKAGES-PATH)/ryu
+	#cp -af ryu-3.20 $(DIST-PACKAGES-PATH)
+	#cp -af ryu-3.20.egg-info $(DIST-PACKAGES-PATH)
+	#cp -af ryu-3.26 $(DIST-PACKAGES-PATH)
+	#cp -af ryu-3.26.egg-info $(DIST-PACKAGES-PATH)
+	rm -rf $(DIST-PACKAGES-PATH)/ryu
+	rm -rf $(DIST-PACKAGES-PATH)/ryu-$(VER).egg-info
+	ln -sf $(PWD)/ryu-$(VER) $(DIST-PACKAGES-PATH)/ryu
+	ln -sf $(PWD)/ryu-$(VER).egg-info $(DIST-PACKAGES-PATH)/ryu-$(VER).egg-info
 
 install_package:
 	#oslo
