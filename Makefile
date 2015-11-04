@@ -6,8 +6,11 @@ all:install_python install_package install_ryu install_exe
 install_python:
 	apt-get install python-eventlet python-routes python-webob python-paramiko python-pkg-resources
 install_ryu:
-	cp -af ryu-$(VER) $(DIST-PACKAGES-PATH)/ryu
-	cp -af ryu-$(VER).egg-info $(DIST-PACKAGES-PATH)
+	cp -af ryu-3.20 $(DIST-PACKAGES-PATH)
+	cp -af ryu-3.20.egg-info $(DIST-PACKAGES-PATH)
+	cp -af ryu-3.26 $(DIST-PACKAGES-PATH)
+	cp -af ryu-3.26.egg-info $(DIST-PACKAGES-PATH)
+	ln -sf $(DIST-PACKAGES-PATH)/ryu-$(VER) $(DIST-PACKAGES-PATH)/ryu
 
 install_package:
 	#oslo
@@ -42,8 +45,11 @@ install_package:
 	cp -af pbr-1.2.0.dist-info $(DIST-PACKAGES-PATH)
 
 install_exe:
-	cp -f script/ryu-$(VER) /usr/local/bin/ryu
-	cp -f script/ryu-manager-$(VER) /usr/local/bin/ryu-manager
-
+	cp -f script/ryu-3.20 /usr/local/bin
+	cp -f script/ryu-manager-3.20 /usr/local/bin
+	cp -f script/ryu-3.26 /usr/local/bin
+	cp -f script/ryu-manager-3.26 /usr/local/bin
+	ln -sf /usr/local/bin/ryu-$(VER) /usr/local/bin/ryu
+	ln -sf /usr/local/bin/ryu-manager-$(VER) /usr/local/bin/ryu-manager
 clean:
 
