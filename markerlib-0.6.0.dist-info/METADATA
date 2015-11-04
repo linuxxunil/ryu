@@ -1,0 +1,75 @@
+Metadata-Version: 2.0
+Name: markerlib
+Version: 0.6.0
+Summary: A compiler for PEP 345 environment markers.
+Home-page: http://bitbucket.org/dholth/markerlib/
+Author: Daniel Holth
+Author-email: dholth@fastmail.fm
+License: MIT
+Keywords: packaging pep345
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 2.4
+Classifier: Programming Language :: Python :: 2.5
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3.2
+Classifier: Programming Language :: Python :: 3.3
+
+markerlib
+=========
+
+Compile or interpret PEP 345 environment markers.
+
+Usage::
+
+    >>> import markerlib
+    >>> marker = markerlib.compile("os.name == 'posix'")
+    >>> marker(environment=markerlib.default_environment(),
+               override={'os.name':'posix'})
+    True
+    >>> marker(environment=markerlib.default_environment(),
+               override={'os.name':'nt'})
+    False
+
+The implementation uses the ast to compile environment markers as Python
+statements with a limited set of allowed node types.
+
+
+
+0.6.0
+=====
+- Allow _ where . was previously used ('os.name' -> 'os_name')
+
+0.5.2
+=====
+- Restore 'as_function' bw/compat synonym for 'compile'
+
+0.5.1
+=====
+- Include 'empty marker' heuristic in markerlib itself
+
+0.5
+===
+- One final release until it's just a part of distribute
+
+0.4
+===
+- Cache compiled marker functions with weakref.WeakValueDictionary
+- Rename markerlib.as_function to markerlib.compile
+
+0.3
+===
+- Might work on Python 2.5 (includes needed parts of the ast module from
+  Python 2.6+)
+- Include 100% test coverage, tox config file
+
+0.1
+===
+- Initial version
+
+
