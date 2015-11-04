@@ -1,4 +1,4 @@
-VER=3.20
+VER=3.26
 
 DIST-PACKAGES-PATH=/usr/local/lib/python2.7/dist-packages
 
