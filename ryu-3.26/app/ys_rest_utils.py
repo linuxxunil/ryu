@@ -55,17 +55,19 @@ from webob import Response
 # =============================
 #
 # * ping 
-# POST /utils/rtt/ping
+# POST /utils/ping
 #
 # parameter = {"sender":{"dpid":"0000000000000001",
+#                        "cookie":0, 
+#                        "priority":128
 #                        "ip":"192.168.1.3",
 #                        "port":1},
 #              "target":{"vlan":100,  # vlan = -1 (no vlan)
 #                        "mac":"00:01:02:03:04:05",
-#                        "ip":"192.168.1.1"}
+#                        "ip":"192.168.1.1"}}
 #
 # * get dpid ip
-# GET /utils/dpid/desc
+# GET /utils/datapath/desc
 #
 VLAN = vlan.vlan.__name__
 ARP = arp.arp.__name__
@@ -93,6 +95,8 @@ KEY_SENDER = "sender"
 KEY_SENDER_DPID = "dpid"
 KEY_SENDER_PORT = "port"
 KEY_SENDER_IP = "ip"
+KEY_SENDER_COOKIE = "cookie"
+KEY_SENDER_PRIORITY = "priority"
 KEY_TARGET = "target"
 KEY_TARGET_VLAN = "vlan"
 KEY_TARGET_IP = "ip"
@@ -108,6 +112,8 @@ VLANID_NONE = 0
 WAIT_TIMER = 1  # sec
 IDLE_TIMEOUT = 180 # sec
 
+RES_SENDER_MAC = "sender_mac"
+RES_TARGET_MAC = "target_mac"
 RES_REPORT = "report"
 RES_MAX_TIME = "max_time"
 RES_MIN_TIME = "min_time"
@@ -215,7 +221,6 @@ def rest_command(func):
             msg = func(*args, **kwargs)
             return Response(content_type='application/json',
                             body=json.dumps(msg))
-
         except SyntaxError as e:
             status = 400
             details = e.msg
@@ -277,7 +282,7 @@ class UtilsController(ControllerBase):
 
 
     @classmethod
-    def _compare(cls, data):
+    def _check_packet(cls, data):
         header_list, pkt = cls._parser_header(data)
         if ICMP_ in header_list:
             _icmp = pkt.get_protocols(icmp)[0]
@@ -395,11 +400,13 @@ class UtilsController(ControllerBase):
 
     @rest_command
     def utils_ping(self, req):
-        try :
+        try :   
             rest_param = req.body
             ujson_parm = json.loads(rest_param) if rest_param else {}
             parm = ast.literal_eval(json.dumps(ujson_parm))
 
+            cookie = parm[KEY_SENDER][KEY_SENDER_COOKIE]
+            priority = parm[KEY_SENDER][KEY_SENDER_PRIORITY]           
             sender_port = parm[KEY_SENDER][KEY_SENDER_PORT]
             sender_id = int(parm[KEY_SENDER][KEY_SENDER_DPID],16)
             sender_ip = parm[KEY_SENDER][KEY_SENDER_IP]
@@ -411,12 +418,15 @@ class UtilsController(ControllerBase):
             if target_vlan == -1 :
                 packet = self._get_icmp_packet(sender_mac, sender_ip,
                                             target_mac, target_ip)
-                return self._execute_rtt(packet, sender_id, sender_port)
+                return self._execute_rtt(cookie=cookie, priority=priority, packet=packet, 
+                                sender_id=sender_id, sender_port=sender_port, 
+                                sender_mac=sender_mac, target_mac=target_mac)
             else:
                 packet = self._get_vlan_icmp_packet(sender_mac, sender_ip, 
                                             target_mac, target_ip, target_vlan)
-            
-                return self._execute_rtt(packet, sender_id, sender_port, target_vlan)
+                return self._execute_rtt(cookie=cookie, priority=priority, packet=packet, 
+                                sender_id=sender_id, sender_port=sender_port, 
+                                sender_mac=sender_mac, target_mac=target_mac, vlan_id=target_vlan)
 
         except NotFoundError as err:
             status = RES_EXECUTE_STATE_FAILURE % str(err)
@@ -425,6 +435,8 @@ class UtilsController(ControllerBase):
             status = RES_EXECUTE_STATE_FAILURE % msg
 
         return {  RES_EXECUTE_STATE: status,
+                    RES_SENDER_MAC: sender_mac,
+                    RES_TARGET_MAC: target_mac,
                     RES_MAX_TIME: 0,
                     RES_MIN_TIME: 0,
                     RES_AVG_TIME: 0,
@@ -433,7 +445,8 @@ class UtilsController(ControllerBase):
                     RES_PACKET_LOSS: "100%",
                     RES_DETAILS : []}
 
-    def _execute_rtt(self, packet, sender_id, sender_port, vlan_vid=VLANID_NONE):
+    def _execute_rtt(self, cookie, priority, packet, sender_id, sender_port, 
+                                            sender_mac, target_mac, vlan_id=VLANID_NONE):
         times = 5
         max_time = 0
         min_time = WAIT_TIMER + 1
@@ -449,10 +462,13 @@ class UtilsController(ControllerBase):
         self.set_sender(sender)
 
         # add flow entry
-        if vlan_vid == VLANID_NONE:
-            sender.add_flow(sender_port)
+        if vlan_id == VLANID_NONE:
+            sender.add_flow(cookie, priority, sender_port, dst_mac=sender_mac)
+            sender.add_flow(cookie, priority, sender_port, src_mac=sender_mac)
         else:
-            sender.add_flow(sender_port, vlan_vid)
+            sender.add_flow(cookie, priority, sender_port, vlan_id, dst_mac=sender_mac)
+            sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
+
 
         # transfer packet
         data = self._get_pkt(packet)
@@ -467,7 +483,7 @@ class UtilsController(ControllerBase):
             rtt = time.time() - start_time
 
             state = RES_PKT_STATE_OK
-            if timeout or not self._compare(self._RECV_MSGS[0]) :
+            if timeout or not self._check_packet(self._RECV_MSGS[0]) :
                 rtt = -1
                 state = RES_PKT_STATE_LOSS
             else :
@@ -480,15 +496,17 @@ class UtilsController(ControllerBase):
 
             result.append({  RES_PKT_STATE: state,
                                 RES_PKT_TIME:rtt*1000 if rtt != -1 else -1})
-
+            print  
 
         return {  RES_EXECUTE_STATE: RES_EXECUTE_STATE_OK,
+                    RES_SENDER_MAC: sender_mac,
+                    RES_TARGET_MAC: target_mac,
                     RES_MAX_TIME: max_time*1000,
                     RES_MIN_TIME: min_time*1000 if min_time < (WAIT_TIMER+1) else 0,
                     RES_AVG_TIME: avg_time*1000,
                     RES_RECEIVED: received,
                     RES_TRANSMITTED: transmitted,
-                    RES_PACKET_LOSS: "%d%%" % (((transmitted - received)/transmitted)*100),
+                    RES_PACKET_LOSS: "%d%%" % int((float((transmitted - received)/transmitted))*100),
                     RES_DETAILS : result}
 
 class Sender(dict):
@@ -507,22 +525,33 @@ class Sender(dict):
     def get_dpid(self):
         return self.dp.id
 
-    def add_flow(self, in_port, vlan_vid=VLANID_NONE):
+    def add_flow(self, cookie=0, priority=1, in_port=0, vlan_id=VLANID_NONE, dst_mac=None, src_mac=None):
         datapath = self.dp
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        if vlan_vid == VLANID_NONE:
-            match = parser.OFPMatch(in_port=in_port)
+        if vlan_id == VLANID_NONE:
+            if dst_mac != None:
+                match = parser.OFPMatch(in_port=in_port, eth_dst=dst_mac)
+            elif src_mac != None:
+                match = parser.OFPMatch(in_port=in_port, eth_src=src_mac)
+            else :
+                match = parser.OFPMatch(in_port=in_port)
         else:
-            match = parser.OFPMatch(in_port=in_port, vlan_vid=vlan_vid)
+            if dst_mac != None:
+                match = parser.OFPMatch(in_port=in_port, vlan_vid=vlan_id, eth_dst=dst_mac)
+            elif src_mac != None:
+                match = parser.OFPMatch(in_port=in_port, vlan_vid=vlan_id, eth_src=src_mac)
+            else :
+                match = parser.OFPMatch(in_port=in_port, vlan_vid=vlan_id)
+
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
 
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS,
                                              actions)]
 
-        mod = parser.OFPFlowMod( idle_timeout=IDLE_TIMEOUT ,datapath=datapath, priority=ofproto_v1_3.OFP_DEFAULT_PRIORITY,
+        mod = parser.OFPFlowMod( cookie=cookie, priority=priority, idle_timeout=IDLE_TIMEOUT ,datapath=datapath,
                                     match=match, instructions=inst)
         datapath.send_msg(mod)
 
@@ -552,11 +581,11 @@ class Sender(dict):
             in_port = self.dp.ofproto.OFPP_CONTROLLER
 
             if VLAN in header_list:
-                vlan_vid = header_list[VLAN].vid
+                vlan_id = header_list[VLAN].vid
             else :
-                vlan_vid = VLANID_NONE
+                vlan_id = VLANID_NONE
 
-            self._send_arp(ARP_REPLY, vlan_vid ,
+            self._send_arp(ARP_REPLY, vlan_id ,
                                 dst_mac, src_mac, dst_ip, src_ip,
                                 arp_target_mac, in_port, output)
 
@@ -565,15 +594,15 @@ class Sender(dict):
             self.logger.info('Send ARP reply to [%s]', srcip,
                                  extra=self.sw_id)
 
-    def _send_arp(self, arp_opcode, vlan_vid, src_mac, dst_mac,
+    def _send_arp(self, arp_opcode, vlan_id, src_mac, dst_mac,
                  src_ip, dst_ip, arp_target_mac, in_port, output):
             # Generate ARP packet
-            if vlan_vid != VLANID_NONE:
+            if vlan_id != VLANID_NONE:
                 ether_proto = ether.ETH_TYPE_8021Q
                 pcp = 0
                 cfi = 0
                 vlan_ether = ether.ETH_TYPE_ARP
-                v = vlan(pcp, cfi, vlan_vid, vlan_ether)
+                v = vlan(pcp, cfi, vlan_id, vlan_ether)
             else:
                 ether_proto = ether.ETH_TYPE_ARP
             hwtype = 1
@@ -586,7 +615,7 @@ class Sender(dict):
             a = arp(hwtype, arp_proto, hlen, plen, arp_opcode,
                     src_mac, src_ip, arp_target_mac, dst_ip)
             pkt.add_protocol(e)
-            if vlan_vid != VLANID_NONE:
+            if vlan_id != VLANID_NONE:
                 pkt.add_protocol(v)
             pkt.add_protocol(a)
             pkt.serialize()
