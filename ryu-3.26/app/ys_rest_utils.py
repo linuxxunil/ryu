@@ -25,6 +25,8 @@ import time
 import sys
 import inspect
 import socket
+import random, string
+
 
 from ryu.base import app_manager
 from ryu.controller import mac_to_port
@@ -104,7 +106,7 @@ KEY_TARGET_MAC = "mac"
 
 
 PKT_INGRESS = "ingress"
-ICMP_DATA="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL"
+#ICMP_DATA="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL"
 
 
 VLANID_NONE = 0
@@ -282,12 +284,12 @@ class UtilsController(ControllerBase):
 
 
     @classmethod
-    def _check_packet(cls, data):
+    def _check_icmp(cls, data, content):
         header_list, pkt = cls._parser_header(data)
         if ICMP_ in header_list:
             _icmp = pkt.get_protocols(icmp)[0]
             _data = _icmp.data.data
-            if _data ==  ICMP_DATA:
+            if _data ==  content:
                 return True
             return False
            
@@ -342,7 +344,7 @@ class UtilsController(ControllerBase):
             data = eval('/'.join(test))
             data.serialize()
             return str(data.data)
-          # parse 'tests'
+        # parse 'tests'
         test_pkt = {}
         # parse 'ingress'  
         if PKT_INGRESS not in test:
@@ -353,23 +355,23 @@ class UtilsController(ControllerBase):
             raise ValueError('invalid format: "%s" field' % PKT_INGRESS)
         return test_pkt
 
-    def _get_vlan_icmp_packet(self,sender_mac, sender_ip, target_mac, target_ip, target_vlan):
-        packet = {
+    def _get_icmp_packet(self,sender_mac, sender_ip, target_mac, target_ip, icmp_content, target_vlan=VLANID_NONE):
+
+        if ( target_vlan == VLANID_NONE ):
+            packet = {
+                "ingress":["ethernet(dst='%s', src='%s', ethertype=2048)" % (target_mac, sender_mac),
+                    "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
+                    "icmp(code=0,csum=0,data=echo(data='%s'),type_=8)" % icmp_content
+                    ]
+            }
+        else :
+            packet = {
                 "ingress":["ethernet(dst='%s', src='%s', ethertype=33024)" % (target_mac, sender_mac),
                     "vlan(pcp=0, cfi=0, vid=%d, ethertype=2048)" % (target_vlan),
                     "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
-                    "icmp(code=0,csum=0,data=echo(data='%s'),type_=8)" % ICMP_DATA
+                    "icmp(code=0,csum=0,data=echo(data='%s'),type_=8)" % icmp_content
                 ]
             }
-        return packet
-
-    def _get_icmp_packet(self,sender_mac, sender_ip, target_mac, target_ip):
-        packet = {
-                "ingress":["ethernet(dst='%s', src='%s', ethertype=2048)" % (target_mac, sender_mac),
-                    "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
-                    "icmp(code=0,csum=0,data=echo(data='%s'),type_=8)" % ICMP_DATA
-                    ]
-                }
         return packet
 
     def _get_mac(self,sender_id, sender_port):
@@ -377,6 +379,8 @@ class UtilsController(ControllerBase):
         if dp.ports.has_key(sender_port):
             return dp.ports[sender_port].hw_addr
 
+    def random_content(self,length):
+        return ''.join(random.choice(string.lowercase) for i in range(length))
 
     @rest_command
     def utils_datapath_desc(self, req):
@@ -404,7 +408,6 @@ class UtilsController(ControllerBase):
             rest_param = req.body
             ujson_parm = json.loads(rest_param) if rest_param else {}
             parm = ast.literal_eval(json.dumps(ujson_parm))
-
             cookie = parm[KEY_SENDER][KEY_SENDER_COOKIE]
             priority = parm[KEY_SENDER][KEY_SENDER_PRIORITY]           
             sender_port = parm[KEY_SENDER][KEY_SENDER_PORT]
@@ -415,18 +418,17 @@ class UtilsController(ControllerBase):
             target_ip = parm[KEY_TARGET][KEY_TARGET_IP]
             sender_mac = self._get_mac(sender_id, sender_port)
 
+
             if target_vlan == -1 :
-                packet = self._get_icmp_packet(sender_mac, sender_ip,
-                                            target_mac, target_ip)
-                return self._execute_rtt(cookie=cookie, priority=priority, packet=packet, 
+                return self._execute_rtt(cookie=cookie, priority=priority, 
                                 sender_id=sender_id, sender_port=sender_port, 
-                                sender_mac=sender_mac, target_mac=target_mac)
+                                sender_ip=sender_ip, sender_mac=sender_mac, 
+                                target_ip=target_ip, target_mac=target_mac)
             else:
-                packet = self._get_vlan_icmp_packet(sender_mac, sender_ip, 
-                                            target_mac, target_ip, target_vlan)
-                return self._execute_rtt(cookie=cookie, priority=priority, packet=packet, 
+                return self._execute_rtt(cookie=cookie, priority=priority,
                                 sender_id=sender_id, sender_port=sender_port, 
-                                sender_mac=sender_mac, target_mac=target_mac, vlan_id=target_vlan)
+                                sender_ip=sender_ip, sender_mac=sender_mac, 
+                                target_ip=target_ip, target_mac=target_mac, vlan_id=target_vlan)
 
         except NotFoundError as err:
             status = RES_EXECUTE_STATE_FAILURE % str(err)
@@ -445,8 +447,8 @@ class UtilsController(ControllerBase):
                     RES_PACKET_LOSS: "100%",
                     RES_DETAILS : []}
 
-    def _execute_rtt(self, cookie, priority, packet, sender_id, sender_port, 
-                                            sender_mac, target_mac, vlan_id=VLANID_NONE):
+    def _execute_rtt(self, cookie, priority, sender_id, sender_port, sender_ip,
+                                    sender_mac, target_ip, target_mac, vlan_id=VLANID_NONE):
         times = 5
         max_time = 0
         min_time = WAIT_TIMER + 1
@@ -469,35 +471,45 @@ class UtilsController(ControllerBase):
             sender.add_flow(cookie, priority, sender_port, vlan_id, dst_mac=sender_mac)
             sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
 
-
         # transfer packet
-        data = self._get_pkt(packet)
-        self.set_pkt(data)
-
-        # start rtt 
         for t in range(times):
-            start_time = time.time()
-            sender.send_packet_out_port(data[PKT_INGRESS], sender_port)
+            state = None
             transmitted = transmitted + 1
-            timeout = self._wait()
-            rtt = time.time() - start_time
 
-            state = RES_PKT_STATE_OK
-            if timeout or not self._check_packet(self._RECV_MSGS[0]) :
+             # prepare icmp packet 
+            content = self.random_content(26)
+            packet = self._get_icmp_packet(sender_mac, sender_ip,
+                                            target_mac, target_ip, content, vlan_id)
+            data = self._get_pkt(packet)
+            self.set_pkt(data)
+
+            # start rtt
+            start_time = time.time()
+            count_time = start_time
+            timeout = start_time + WAIT_TIMER
+            sender.send_packet_out_port(data[PKT_INGRESS], sender_port) 
+            while timeout > count_time:
+                wait_timeout = self._wait()
+                if wait_timeout != True and\
+                        self._check_icmp(self._RECV_MSGS[0], content):
+                    state = RES_PKT_STATE_OK
+                    rtt = time.time() - start_time
+                    max_time = max(max_time, rtt)
+                    min_time = min(min_time, rtt)
+                    if t == 0 : avg_time = rtt
+                    else : avg_time = ( avg_time + rtt ) / 2
+                    received = received + 1
+                    break
+                count_time = time.time()
+
+            if state == None :
                 rtt = -1
                 state = RES_PKT_STATE_LOSS
-            else :
-                max_time = max(max_time, rtt)
-                min_time = min(min_time, rtt)
-
-                if t == 0 : avg_time = rtt
-                else : avg_time = ( avg_time + rtt ) / 2
-                received = received + 1
 
             result.append({  RES_PKT_STATE: state,
-                                RES_PKT_TIME:rtt*1000 if rtt != -1 else -1})
-            print  
+                                RES_PKT_TIME:rtt*1000 if rtt != -1 else -1}) 
 
+        # start rtt 
         return {  RES_EXECUTE_STATE: RES_EXECUTE_STATE_OK,
                     RES_SENDER_MAC: sender_mac,
                     RES_TARGET_MAC: target_mac,
@@ -506,7 +518,7 @@ class UtilsController(ControllerBase):
                     RES_AVG_TIME: avg_time*1000,
                     RES_RECEIVED: received,
                     RES_TRANSMITTED: transmitted,
-                    RES_PACKET_LOSS: "%d%%" % int((float((transmitted - received)/transmitted))*100),
+                    RES_PACKET_LOSS: "%d%%" % int(float(transmitted - received)/float(transmitted)*100),
                     RES_DETAILS : result}
 
 class Sender(dict):
