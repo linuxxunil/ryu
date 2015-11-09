@@ -498,6 +498,8 @@ class UtilsController(ControllerBase):
             sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
 
         # transfer packet
+        success_count = 0
+        total_rtt = 0
         for t in range(times):
             state = None
             transmitted = transmitted + 1
@@ -516,14 +518,20 @@ class UtilsController(ControllerBase):
             sender.send_packet_out_port(data[PKT_INGRESS], sender_port) 
             while timeout > count_time:
                 wait_timeout = self._wait()
+                
                 if wait_timeout != True and\
                         self._check_icmp(self._RECV_MSGS[0], content):
+                    
                     state = RES_PKT_STATE_OK
-                    rtt = time.time() - start_time
+                    rtt = (time.time() - start_time) * 1000 # ms
                     max_time = max(max_time, rtt)
                     min_time = min(min_time, rtt)
-                    if t == 0 : avg_time = rtt
-                    else : avg_time = ( avg_time + rtt ) / 2
+                    
+                    if transmitted > 1:
+                        success_count = success_count + 1
+                        total_rtt = total_rtt + rtt 
+                    #if t == 0 : avg_time = rtt
+                    #else : avg_time = ( avg_time + rtt ) / 2
                     received = received + 1
                     break
                 count_time = time.time()
@@ -533,15 +541,15 @@ class UtilsController(ControllerBase):
                 state = RES_PKT_STATE_LOSS
 
             result.append({  RES_PKT_STATE: state,
-                                RES_PKT_TIME:rtt*1000 if rtt != -1 else -1}) 
+                                RES_PKT_TIME:rtt if rtt != -1 else -1}) 
 
         # start rtt 
         return {  RES_EXECUTE_STATE: RES_EXECUTE_STATE_OK,
                     RES_SENDER_MAC: sender_mac,
                     RES_TARGET_MAC: target_mac,
-                    RES_MAX_TIME: max_time*1000,
-                    RES_MIN_TIME: min_time*1000 if min_time < (WAIT_TIMER+1) else 0,
-                    RES_AVG_TIME: avg_time*1000,
+                    RES_MAX_TIME: max_time,
+                    RES_MIN_TIME: min_time if min_time < (WAIT_TIMER+1) else 0,
+                    RES_AVG_TIME: (float(total_rtt)/float(success_count)),
                     RES_RECEIVED: received,
                     RES_TRANSMITTED: transmitted,
                     RES_PACKET_LOSS: "%d%%" % int(float(transmitted - received)/float(transmitted)*100),
