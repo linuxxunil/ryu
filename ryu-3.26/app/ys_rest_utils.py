@@ -242,6 +242,7 @@ def rest_command(func):
 
 class UtilsController(ControllerBase):
     _SWITCH_LIST = {}
+    _SWITCH_PORTS = {}
     _LOGGER = None
     _SENDER = None
     _RECV_MSGS = []
@@ -272,6 +273,7 @@ class UtilsController(ControllerBase):
     @classmethod
     def register(cls, dp):
         cls._SWITCH_LIST[dp.id] = dp
+        cls._SWITCH_PORTS[dp.id] = cls.__handle_mac_address(dp.id)
         dpid = {'sw_id': dpid_lib.dpid_to_str(dp.id)}
         cls._LOGGER.info('Register switch.', extra=dpid)
 
@@ -282,6 +284,25 @@ class UtilsController(ControllerBase):
             dpid = {'sw_id': dpid_lib.dpid_to_str(dp.id)}
             cls._LOGGER.info('Unregister switch.', extra=dpid)
 
+    @classmethod
+    def __random_mac(cls):
+        mac = [ 0x00, 0x16, 0x3e,
+            random.randint(0x00, 0x7f),
+            random.randint(0x00, 0xff),
+            random.randint(0x00, 0xff)]
+
+        return ':'.join(map(lambda x: "%02x" % x, mac))
+
+    @classmethod
+    def __handle_mac_address(cls, dpid):
+        dp = cls._SWITCH_LIST[dpid]
+        ports = {}
+        for num in dp.ports:
+            if dp.ports[num].hw_addr == "00:00:00:00:00:00":
+                ports[num] = cls.__random_mac()
+            else :
+                ports[num] = dp.ports[num].hw_addr
+        return ports
 
     @classmethod
     def _check_icmp(cls, data, content):
@@ -375,9 +396,14 @@ class UtilsController(ControllerBase):
         return packet
 
     def _get_mac(self,sender_id, sender_port):
-        dp = self._SWITCH_LIST[sender_id]
-        if dp.ports.has_key(sender_port):
-            return dp.ports[sender_port].hw_addr
+        #dp = self._SWITCH_LIST[sender_id]
+        #if dp.ports.has_key(sender_port):
+        #    return dp.ports[sender_port].hw_addr
+        ports = self._SWITCH_PORTS[sender_id]
+        if sender_port in ports:
+            print ports[sender_port]
+            return ports[sender_port]
+
 
     def random_content(self,length):
         return ''.join(random.choice(string.lowercase) for i in range(length))
@@ -417,7 +443,6 @@ class UtilsController(ControllerBase):
             target_mac = parm[KEY_TARGET][KEY_TARGET_MAC]
             target_ip = parm[KEY_TARGET][KEY_TARGET_IP]
             sender_mac = self._get_mac(sender_id, sender_port)
-
 
             if target_vlan == -1 :
                 return self._execute_rtt(cookie=cookie, priority=priority, 
@@ -460,7 +485,8 @@ class UtilsController(ControllerBase):
         if not self._SWITCH_LIST.has_key(sender_id):
             raise NotFoundError(switch_id=dpid_lib.dpid_to_str(sender_id))
             
-        sender = Sender(self._SWITCH_LIST[sender_id], sender_port, self._LOGGER)
+        sender = Sender(self._SWITCH_LIST[sender_id], self._SWITCH_PORTS[sender_id], 
+                                sender_port, self._LOGGER)
         self.set_sender(sender)
 
         # add flow entry
@@ -523,16 +549,19 @@ class UtilsController(ControllerBase):
 
 class Sender(dict):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-    def __init__(self, dp, port, logger):
+    def __init__(self, dp, dp_ports, port, logger):
         super(Sender, self).__init__()
         self.dp = dp
         self.dpid_str = dpid_lib.dpid_to_str(dp.id)
         self.sw_id = {'sw_id': self.dpid_str}
         self.logger = logger
         self.port = port
+        self.dp_ports = dp_ports
 
     def _get_mac(self,port):
-        return self.dp.ports[port].hw_addr
+        #return self.dp.ports[port].hw_addr
+        return self.dp_ports[port]
+
 
     def get_dpid(self):
         return self.dp.id

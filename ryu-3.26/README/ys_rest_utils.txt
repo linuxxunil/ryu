@@ -26,7 +26,7 @@ c. add flow entry to target
 curl -X POST -d '{"dpid":"0000000000000002", "priority":"10","match":{"vlan_vid":4196},"actions":[{"type":"OUTPUT","port":4294967288}]}' http://ubuntu:8080/stats/flowentry/add
 
 d. ping vlan = 100
-curl -X POST -d '{"sender":{"dpid":"0000000000000001","ip":"192.168.1.3","port":1},"target":{"vlan":4196,"mac":"00:01:02:03:04:05","ip":"192.168.1.2"}}' http://ubuntu:8080/utils/ping
+curl -X POST -d '{"sender":{"dpid":"0000000000000001","cookie":1, "priority":12, "ip":"192.168.1.3","port":1},"target":{"vlan":4196,"mac":"00:01:02:03:04:05","ip":"192.168.1.2"}}' http://ubuntu:8080/utils/ping
 
 time unit : ms
 3. 情境二接法：
