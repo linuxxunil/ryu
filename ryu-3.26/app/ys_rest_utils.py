@@ -434,26 +434,32 @@ class UtilsController(ControllerBase):
             rest_param = req.body
             ujson_parm = json.loads(rest_param) if rest_param else {}
             parm = ast.literal_eval(json.dumps(ujson_parm))
-            cookie = parm[KEY_SENDER][KEY_SENDER_COOKIE]
-            priority = parm[KEY_SENDER][KEY_SENDER_PRIORITY]           
+
+            cookie = parm[KEY_SENDER][KEY_SENDER_COOKIE]\
+                         if KEY_SENDER_COOKIE in parm[KEY_SENDER] else 0
+            priority = parm[KEY_SENDER][KEY_SENDER_PRIORITY]\
+                         if KEY_SENDER_PRIORITY in parm[KEY_SENDER] else 0
             sender_port = parm[KEY_SENDER][KEY_SENDER_PORT]
             sender_id = int(parm[KEY_SENDER][KEY_SENDER_DPID],16)
             sender_ip = parm[KEY_SENDER][KEY_SENDER_IP]
-            target_vlan = parm[KEY_TARGET][KEY_TARGET_VLAN]
             target_mac = parm[KEY_TARGET][KEY_TARGET_MAC]
             target_ip = parm[KEY_TARGET][KEY_TARGET_IP]
+
             sender_mac = self._get_mac(sender_id, sender_port)
 
-            if target_vlan == -1 :
-                return self._execute_rtt(cookie=cookie, priority=priority, 
-                                sender_id=sender_id, sender_port=sender_port, 
-                                sender_ip=sender_ip, sender_mac=sender_mac, 
-                                target_ip=target_ip, target_mac=target_mac)
-            else:
-                return self._execute_rtt(cookie=cookie, priority=priority,
-                                sender_id=sender_id, sender_port=sender_port, 
-                                sender_ip=sender_ip, sender_mac=sender_mac, 
-                                target_ip=target_ip, target_mac=target_mac, vlan_id=target_vlan)
+
+
+            if KEY_TARGET_VLAN in parm[KEY_TARGET] and\
+                            parm[KEY_TARGET][KEY_TARGET_VLAN] != -1:
+                target_vlan = parm[KEY_TARGET][KEY_TARGET_VLAN]
+            else : 
+                target_vlan = VLANID_NONE
+            
+            print target_vlan
+            return self._execute_rtt(cookie=cookie, priority=priority,
+                            sender_id=sender_id, sender_port=sender_port, 
+                            sender_ip=sender_ip, sender_mac=sender_mac, 
+                            target_ip=target_ip, target_mac=target_mac, vlan_id=target_vlan)
 
         except NotFoundError as err:
             status = RES_EXECUTE_STATE_FAILURE % str(err)
@@ -486,16 +492,13 @@ class UtilsController(ControllerBase):
             raise NotFoundError(switch_id=dpid_lib.dpid_to_str(sender_id))
             
         sender = Sender(self._SWITCH_LIST[sender_id], self._SWITCH_PORTS[sender_id], 
-                                sender_port, self._LOGGER)
+                            sender_ip, sender_port, self._LOGGER)
         self.set_sender(sender)
 
         # add flow entry
-        if vlan_id == VLANID_NONE:
-            sender.add_flow(cookie, priority, sender_port, dst_mac=sender_mac)
-            sender.add_flow(cookie, priority, sender_port, src_mac=sender_mac)
-        else:
-            sender.add_flow(cookie, priority, sender_port, vlan_id, dst_mac=sender_mac)
-            sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
+        sender.add_arp_flow(cookie, sender_port, target_mac, vlan_id)
+        sender.add_flow(cookie, priority, sender_port, vlan_id, dst_mac=sender_mac)
+        sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
 
         # transfer packet
         success_count = 0
@@ -549,15 +552,16 @@ class UtilsController(ControllerBase):
                     RES_TARGET_MAC: target_mac,
                     RES_MAX_TIME: max_time,
                     RES_MIN_TIME: min_time if min_time < (WAIT_TIMER+1) else 0,
-                    RES_AVG_TIME: (float(total_rtt)/float(success_count)),
+                    RES_AVG_TIME: (float(total_rtt)/float(success_count)) if success_count != 0 else 0,
                     RES_RECEIVED: received,
                     RES_TRANSMITTED: transmitted,
-                    RES_PACKET_LOSS: "%d%%" % int(float(transmitted - received)/float(transmitted)*100),
+                    RES_PACKET_LOSS: "%d%%" % int(float(transmitted - received)/float(transmitted)*100)\
+                         if transmitted != 0 else 0,
                     RES_DETAILS : result}
 
 class Sender(dict):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-    def __init__(self, dp, dp_ports, port, logger):
+    def __init__(self, dp, dp_ports, ip, port, logger):
         super(Sender, self).__init__()
         self.dp = dp
         self.dpid_str = dpid_lib.dpid_to_str(dp.id)
@@ -565,10 +569,11 @@ class Sender(dict):
         self.logger = logger
         self.port = port
         self.dp_ports = dp_ports
+        self.ip = ip
 
-    def _get_mac(self,port):
+    def _get_mac(self):
         #return self.dp.ports[port].hw_addr
-        return self.dp_ports[port]
+        return self.dp_ports[self.port]
 
 
     def get_dpid(self):
@@ -580,6 +585,7 @@ class Sender(dict):
         parser = datapath.ofproto_parser
 
         if vlan_id == VLANID_NONE:
+            
             if dst_mac != None:
                 match = parser.OFPMatch(in_port=in_port, eth_dst=dst_mac)
             elif src_mac != None:
@@ -604,6 +610,27 @@ class Sender(dict):
                                     match=match, instructions=inst)
         datapath.send_msg(mod)
 
+    def add_arp_flow(self, cookie, in_port, src_mac, vlan_id=VLANID_NONE):
+        datapath = self.dp
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        if vlan_id == VLANID_NONE:
+            match = parser.OFPMatch(in_port=in_port, eth_type=2054, eth_src=src_mac)
+        else:
+            match = parser.OFPMatch(in_port=in_port, eth_type=2054, vlan_vid=vlan_id, eth_src=src_mac)
+        
+        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
+                                          ofproto.OFPCML_NO_BUFFER)]
+
+        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS,
+                                             actions)]
+
+        mod = parser.OFPFlowMod( cookie=cookie, priority=0, idle_timeout=IDLE_TIMEOUT ,datapath=datapath,
+                                    match=match, instructions=inst)
+        datapath.send_msg(mod)
+
+
     def send_packet_out_port(self, data, port):
         """ send a PacketOut message."""
         datapath = self.dp
@@ -616,15 +643,17 @@ class Sender(dict):
         datapath.send_msg(out) 
 
     def handle_arp(self, msg, header_list):
-        in_port = self.port
-        src_ip = header_list[ARP].src_ip
         dst_ip = header_list[ARP].dst_ip
+        if self.ip != dst_ip : return
+
+        src_ip = header_list[ARP].src_ip
+        in_port = self.port
         srcip = self._ip_addr_ntoa(src_ip)
         dstip = self._ip_addr_ntoa(dst_ip)
         if header_list[ARP].opcode == ARP_REQUEST:
             # ARP request to router port -> send ARP reply
             src_mac = header_list[ARP].src_mac
-            dst_mac = self._get_mac(self.port)
+            dst_mac = self._get_mac()
             arp_target_mac = dst_mac
             output = in_port
             in_port = self.dp.ofproto.OFPP_CONTROLLER
