@@ -64,7 +64,7 @@ from webob import Response
 #                        "priority":128
 #                        "ip":"192.168.1.3",
 #                        "port":1},
-#              "target":{"vlan":100,  # vlan = -1 (no vlan)
+#              "target":{"vlan":4196,  # vlan = -1 (no vlan)
 #                        "mac":"00:01:02:03:04:05",
 #                        "ip":"192.168.1.1"}}
 #
@@ -349,6 +349,8 @@ class UtilsController(ControllerBase):
     def packet_in_handler(cls, msg):
         header_list, pkt = cls._parser_header(msg.data)
         if ARP in header_list:
+            if cls._SENDER != None:
+            	markTime( "Handle ARP_REQUEST Start")
             cls._SENDER.handle_arp(msg, header_list)
         else:
             datapath = msg.datapath
@@ -401,7 +403,6 @@ class UtilsController(ControllerBase):
         #    return dp.ports[sender_port].hw_addr
         ports = self._SWITCH_PORTS[sender_id]
         if sender_port in ports:
-            print ports[sender_port]
             return ports[sender_port]
 
 
@@ -434,7 +435,6 @@ class UtilsController(ControllerBase):
             rest_param = req.body
             ujson_parm = json.loads(rest_param) if rest_param else {}
             parm = ast.literal_eval(json.dumps(ujson_parm))
-
             cookie = parm[KEY_SENDER][KEY_SENDER_COOKIE]\
                          if KEY_SENDER_COOKIE in parm[KEY_SENDER] else 0
             priority = parm[KEY_SENDER][KEY_SENDER_PRIORITY]\
@@ -444,10 +444,7 @@ class UtilsController(ControllerBase):
             sender_ip = parm[KEY_SENDER][KEY_SENDER_IP]
             target_mac = parm[KEY_TARGET][KEY_TARGET_MAC]
             target_ip = parm[KEY_TARGET][KEY_TARGET_IP]
-
             sender_mac = self._get_mac(sender_id, sender_port)
-
-
 
             if KEY_TARGET_VLAN in parm[KEY_TARGET] and\
                             parm[KEY_TARGET][KEY_TARGET_VLAN] != -1:
@@ -455,7 +452,6 @@ class UtilsController(ControllerBase):
             else : 
                 target_vlan = VLANID_NONE
             
-            print target_vlan
             return self._execute_rtt(cookie=cookie, priority=priority,
                             sender_id=sender_id, sender_port=sender_port, 
                             sender_ip=sender_ip, sender_mac=sender_mac, 
@@ -496,7 +492,7 @@ class UtilsController(ControllerBase):
         self.set_sender(sender)
 
         # add flow entry
-        sender.add_arp_flow(cookie, sender_port, target_mac, vlan_id)
+        #sender.add_arp_flow(cookie, sender_port, target_mac, vlan_id)
         sender.add_flow(cookie, priority, sender_port, vlan_id, dst_mac=sender_mac)
         sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
 
