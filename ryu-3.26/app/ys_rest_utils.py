@@ -64,7 +64,7 @@ from webob import Response
 #                        "priority":128
 #                        "ip":"192.168.1.3",
 #                        "port":1},
-#              "target":{"vlan":100,  # vlan = -1 (no vlan)
+#              "target":{"vlan":4196,  # vlan = -1 (no vlan)
 #                        "mac":"00:01:02:03:04:05",
 #                        "ip":"192.168.1.1"}}
 #
@@ -150,6 +150,12 @@ class CommandFailure(RyuException):
     pass
 
 
+def markTime(message, _time=None):
+    if _time == None:
+        print "[%f] %s" % (time.time(),message)
+    else :
+        print "[%f] %s" % (_time,message)
+
 
 class RestRTTAPI(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -208,7 +214,10 @@ class RestRTTAPI(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPacketIn, handler.MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         UtilsController.packet_in_handler(ev.msg)
-        
+    
+    @set_ev_cls(ofp_event.EventOFPBarrierReply, handler.MAIN_DISPATCHER)
+    def barrier_reply_handler(self, ev):
+        markTime("Receive Barrier Reply")
 
     @set_ev_cls([ofp_event.EventOFPFlowStatsReply],handler.MAIN_DISPATCHER)
     def stats_reply_handler(self, ev):
@@ -349,16 +358,21 @@ class UtilsController(ControllerBase):
     def packet_in_handler(cls, msg):
         header_list, pkt = cls._parser_header(msg.data)
         if ARP in header_list:
-            cls._SENDER.handle_arp(msg, header_list)
+            if cls._SENDER != None:
+            	markTime( "Handle ARP_REQUEST Start")
+	    	cls._SENDER.handle_arp(msg, header_list)
+           	markTime( "Handle ARP_REQUEST Stop")
         else:
             datapath = msg.datapath
             if cls._SENDER != None and\
                 datapath.id == cls._SENDER.get_dpid():
                 while not isinstance(cls._WAITER,hub.Event):
                     hub.sleep(1)
+                markTime( "Receive Packet Start")
                 cls._WAITER.set()
                 cls._RECV_MSGS.append(msg.data)
-        
+                markTime( "Receive Packet Stop")
+
     def _get_pkt(self, test):
         def __test_pkt_from_json(test):
             test =json.loads(json.dumps(test))
@@ -388,7 +402,7 @@ class UtilsController(ControllerBase):
         else :
             packet = {
                 "ingress":["ethernet(dst='%s', src='%s', ethertype=33024)" % (target_mac, sender_mac),
-                    "vlan(pcp=0, cfi=0, vid=%d, ethertype=2048)" % (target_vlan),
+                    "vlan(pcp=0, cfi=0, vid=%d, ethertype=2048)" % target_vlan,
                     "ipv4(tos=32, proto=1, src='%s', dst='%s', ttl=64)" % (sender_ip, target_ip),
                     "icmp(code=0,csum=0,data=echo(data='%s'),type_=8)" % icmp_content
                 ]
@@ -401,7 +415,6 @@ class UtilsController(ControllerBase):
         #    return dp.ports[sender_port].hw_addr
         ports = self._SWITCH_PORTS[sender_id]
         if sender_port in ports:
-            print ports[sender_port]
             return ports[sender_port]
 
 
@@ -434,26 +447,27 @@ class UtilsController(ControllerBase):
             rest_param = req.body
             ujson_parm = json.loads(rest_param) if rest_param else {}
             parm = ast.literal_eval(json.dumps(ujson_parm))
-            cookie = parm[KEY_SENDER][KEY_SENDER_COOKIE]
-            priority = parm[KEY_SENDER][KEY_SENDER_PRIORITY]           
+            cookie = parm[KEY_SENDER][KEY_SENDER_COOKIE]\
+                         if KEY_SENDER_COOKIE in parm[KEY_SENDER] else 0
+            priority = parm[KEY_SENDER][KEY_SENDER_PRIORITY]\
+                         if KEY_SENDER_PRIORITY in parm[KEY_SENDER] else 0
             sender_port = parm[KEY_SENDER][KEY_SENDER_PORT]
             sender_id = int(parm[KEY_SENDER][KEY_SENDER_DPID],16)
             sender_ip = parm[KEY_SENDER][KEY_SENDER_IP]
-            target_vlan = parm[KEY_TARGET][KEY_TARGET_VLAN]
             target_mac = parm[KEY_TARGET][KEY_TARGET_MAC]
             target_ip = parm[KEY_TARGET][KEY_TARGET_IP]
             sender_mac = self._get_mac(sender_id, sender_port)
 
-            if target_vlan == -1 :
-                return self._execute_rtt(cookie=cookie, priority=priority, 
-                                sender_id=sender_id, sender_port=sender_port, 
-                                sender_ip=sender_ip, sender_mac=sender_mac, 
-                                target_ip=target_ip, target_mac=target_mac)
-            else:
-                return self._execute_rtt(cookie=cookie, priority=priority,
-                                sender_id=sender_id, sender_port=sender_port, 
-                                sender_ip=sender_ip, sender_mac=sender_mac, 
-                                target_ip=target_ip, target_mac=target_mac, vlan_id=target_vlan)
+            if KEY_TARGET_VLAN in parm[KEY_TARGET] and\
+                            parm[KEY_TARGET][KEY_TARGET_VLAN] != -1:
+                target_vlan = parm[KEY_TARGET][KEY_TARGET_VLAN]
+            else : 
+                target_vlan = VLANID_NONE
+            
+            return self._execute_rtt(cookie=cookie, priority=priority,
+                            sender_id=sender_id, sender_port=sender_port, 
+                            sender_ip=sender_ip, sender_mac=sender_mac, 
+                            target_ip=target_ip, target_mac=target_mac, vlan_id=target_vlan)
 
         except NotFoundError as err:
             status = RES_EXECUTE_STATE_FAILURE % str(err)
@@ -472,6 +486,8 @@ class UtilsController(ControllerBase):
                     RES_PACKET_LOSS: "100%",
                     RES_DETAILS : []}
 
+   
+
     def _execute_rtt(self, cookie, priority, sender_id, sender_port, sender_ip,
                                     sender_mac, target_ip, target_mac, vlan_id=VLANID_NONE):
         times = 5
@@ -486,44 +502,61 @@ class UtilsController(ControllerBase):
             raise NotFoundError(switch_id=dpid_lib.dpid_to_str(sender_id))
             
         sender = Sender(self._SWITCH_LIST[sender_id], self._SWITCH_PORTS[sender_id], 
-                                sender_port, self._LOGGER)
+                            sender_ip, sender_port, self._LOGGER)
         self.set_sender(sender)
 
         # add flow entry
-        if vlan_id == VLANID_NONE:
-            sender.add_flow(cookie, priority, sender_port, dst_mac=sender_mac)
-            sender.add_flow(cookie, priority, sender_port, src_mac=sender_mac)
-        else:
-            sender.add_flow(cookie, priority, sender_port, vlan_id, dst_mac=sender_mac)
-            sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
+        #sender.add_arp_flow(cookie, sender_port, target_mac, vlan_id)
+        #sender.add_flow(cookie, priority, sender_port, vlan_id, dst_mac=sender_mac)
+        #sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
 
         # transfer packet
         success_count = 0
         total_rtt = 0
+        markTime("########### Start ##########")
         for t in range(times):
             state = None
             transmitted = transmitted + 1
+            markTime("-----transmitted"+str(t)+"-----")
 
-             # prepare icmp packet 
+            # prepare icmp packet 
+            markTime(" prepare packet start")
             content = self.random_content(26)
+            print "  content=" + content
             packet = self._get_icmp_packet(sender_mac, sender_ip,
                                             target_mac, target_ip, content, vlan_id)
             data = self._get_pkt(packet)
             self.set_pkt(data)
+            markTime(" prepare packet finish")
 
             # start rtt
             start_time = time.time()
             count_time = start_time
             timeout = start_time + WAIT_TIMER
+
+
+            markTime(" save start_time variable", start_time)
+
+            markTime(" send packet to queue start")
             sender.send_packet_out_port(data[PKT_INGRESS], sender_port) 
+            markTime(" send packet to queue stop")
+            markTime(" send barrier to queue start")
+            sender.send_barrier_request() 
+            markTime(" send barrier to queue stop")
             while timeout > count_time:
+
+                markTime(" wait packet start")
                 wait_timeout = self._wait()
-                
+                markTime(" wait packet stop (Timeout=%s)"%wait_timeout)
+
+
                 if wait_timeout != True and\
                         self._check_icmp(self._RECV_MSGS[0], content):
                     
                     state = RES_PKT_STATE_OK
-                    rtt = (time.time() - start_time) * 1000 # ms
+                    stop_time = time.time()
+                    rtt = (stop_time - start_time) * 1000 # ms
+                    markTime(" stop_time", stop_time)
                     max_time = max(max_time, rtt)
                     min_time = min(min_time, rtt)
                     
@@ -536,28 +569,32 @@ class UtilsController(ControllerBase):
                     break
                 count_time = time.time()
 
+
             if state == None :
                 rtt = -1
                 state = RES_PKT_STATE_LOSS
 
             result.append({  RES_PKT_STATE: state,
                                 RES_PKT_TIME:rtt if rtt != -1 else -1}) 
+            markTime("-----transmitted"+str(t)+"-----\n")
 
+        markTime("########### Stop ##########")
         # start rtt 
         return {  RES_EXECUTE_STATE: RES_EXECUTE_STATE_OK,
                     RES_SENDER_MAC: sender_mac,
                     RES_TARGET_MAC: target_mac,
                     RES_MAX_TIME: max_time,
                     RES_MIN_TIME: min_time if min_time < (WAIT_TIMER+1) else 0,
-                    RES_AVG_TIME: (float(total_rtt)/float(success_count)),
+                    RES_AVG_TIME: (float(total_rtt)/float(success_count)) if success_count != 0 else 0,
                     RES_RECEIVED: received,
                     RES_TRANSMITTED: transmitted,
-                    RES_PACKET_LOSS: "%d%%" % int(float(transmitted - received)/float(transmitted)*100),
+                    RES_PACKET_LOSS: "%d%%" % int(float(transmitted - received)/float(transmitted)*100)\
+                         if transmitted != 0 else 0,
                     RES_DETAILS : result}
 
 class Sender(dict):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-    def __init__(self, dp, dp_ports, port, logger):
+    def __init__(self, dp, dp_ports, ip, port, logger):
         super(Sender, self).__init__()
         self.dp = dp
         self.dpid_str = dpid_lib.dpid_to_str(dp.id)
@@ -565,10 +602,11 @@ class Sender(dict):
         self.logger = logger
         self.port = port
         self.dp_ports = dp_ports
+        self.ip = ip
 
-    def _get_mac(self,port):
+    def _get_mac(self):
         #return self.dp.ports[port].hw_addr
-        return self.dp_ports[port]
+        return self.dp_ports[self.port]
 
 
     def get_dpid(self):
@@ -580,6 +618,7 @@ class Sender(dict):
         parser = datapath.ofproto_parser
 
         if vlan_id == VLANID_NONE:
+            
             if dst_mac != None:
                 match = parser.OFPMatch(in_port=in_port, eth_dst=dst_mac)
             elif src_mac != None:
@@ -604,6 +643,27 @@ class Sender(dict):
                                     match=match, instructions=inst)
         datapath.send_msg(mod)
 
+    def add_arp_flow(self, cookie, in_port, src_mac, vlan_id=VLANID_NONE):
+        datapath = self.dp
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        if vlan_id == VLANID_NONE:
+            match = parser.OFPMatch(in_port=in_port, eth_type=2054, eth_src=src_mac)
+        else:
+            match = parser.OFPMatch(in_port=in_port, eth_type=2054, vlan_vid=vlan_id, eth_src=src_mac)
+        
+        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
+                                          ofproto.OFPCML_NO_BUFFER)]
+
+        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS,
+                                             actions)]
+
+        mod = parser.OFPFlowMod( cookie=cookie, priority=0, idle_timeout=IDLE_TIMEOUT ,datapath=datapath,
+                                    match=match, instructions=inst)
+        datapath.send_msg(mod)
+
+
     def send_packet_out_port(self, data, port):
         """ send a PacketOut message."""
         datapath = self.dp
@@ -615,16 +675,25 @@ class Sender(dict):
             data=data, in_port=ofp.OFPP_CONTROLLER, actions=actions)
         datapath.send_msg(out) 
 
+    def send_barrier_request(self):
+        """ send a BARRIER_REQUEST message."""
+	datapath = self.dp
+        parser = self.dp.ofproto_parser
+        req = parser.OFPBarrierRequest(self.dp)
+        return datapath.send_msg(req)
+
     def handle_arp(self, msg, header_list):
-        in_port = self.port
-        src_ip = header_list[ARP].src_ip
         dst_ip = header_list[ARP].dst_ip
+        if self.ip != dst_ip : return
+
+        src_ip = header_list[ARP].src_ip
+        in_port = self.port
         srcip = self._ip_addr_ntoa(src_ip)
         dstip = self._ip_addr_ntoa(dst_ip)
         if header_list[ARP].opcode == ARP_REQUEST:
             # ARP request to router port -> send ARP reply
             src_mac = header_list[ARP].src_mac
-            dst_mac = self._get_mac(self.port)
+            dst_mac = self._get_mac()
             arp_target_mac = dst_mac
             output = in_port
             in_port = self.dp.ofproto.OFPP_CONTROLLER
@@ -634,10 +703,11 @@ class Sender(dict):
             else :
                 vlan_id = VLANID_NONE
 
+            markTime(" send arp start")
             self._send_arp(ARP_REPLY, vlan_id ,
                                 dst_mac, src_mac, dst_ip, src_ip,
                                 arp_target_mac, in_port, output)
-
+            markTime(" send arp stop")
             log_msg = 'Receive ARP request from [%s] to port [%s].'
             self.logger.info(log_msg, srcip, dstip, extra=self.sw_id)
             self.logger.info('Send ARP reply to [%s]', srcip,

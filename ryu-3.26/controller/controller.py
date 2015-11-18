@@ -21,7 +21,7 @@ The main component of OpenFlow controller.
 - Generate and route events to appropriate entities like Ryu applications
 
 """
-
+import time
 import contextlib
 from ryu import cfg
 import logging
@@ -200,12 +200,18 @@ class Datapath(ofproto_protocol.ProtocolDesc):
                     count = 0
                     hub.sleep(0)
 
+    def _markTime(self, message):
+        print "[%f] %s" % (time.time(),message)
+
     @_deactivate
     def _send_loop(self):
         try:
             while self.is_active:
                 buf = self.send_q.get()
+                self._markTime("    Send Packet Start")
                 self.socket.sendall(buf)
+                print "%x",buf
+                self._markTime("    Send Packet Stop")
         finally:
             q = self.send_q
             # first, clear self.send_q to prevent new references.
