@@ -350,8 +350,7 @@ class UtilsController(ControllerBase):
         header_list, pkt = cls._parser_header(msg.data)
         if ARP in header_list:
             if cls._SENDER != None:
-            	markTime( "Handle ARP_REQUEST Start")
-            cls._SENDER.handle_arp(msg, header_list)
+            	cls._SENDER.handle_arp(msg, header_list)
         else:
             datapath = msg.datapath
             if cls._SENDER != None and\
