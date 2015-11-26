@@ -1,4 +1,4 @@
-VER=3.26
+VER=3.20
 
 DIST-PACKAGES-PATH=/usr/local/lib/python2.7/dist-packages
 PWD=$(shell pwd)
@@ -44,7 +44,9 @@ install_package:
 	#pbr
 	cp -af pbr $(DIST-PACKAGES-PATH)
 	cp -af pbr-1.2.0.dist-info $(DIST-PACKAGES-PATH)
-
+	#greenlet
+	cp -af greenlet.so $(DIST-PACKAGES-PATH)
+	cp -af greenlet-0.4.9.egg-info $(DIST-PACKAGES-PATH)
 install_exe:
 	cp -f script/ryu-3.20 /usr/local/bin
 	cp -f script/ryu-manager-3.20 /usr/local/bin
