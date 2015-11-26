@@ -110,7 +110,7 @@ PKT_INGRESS = "ingress"
 
 
 VLANID_NONE = 0
-
+BARRIER_WAIT_TIMER = 3
 WAIT_TIMER = 1  # sec
 IDLE_TIMEOUT = 180 # sec
 
@@ -206,9 +206,12 @@ class RestRTTAPI(app_manager.RyuApp):
                 UtilsController.unregister(ev.datapath)    
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, handler.MAIN_DISPATCHER)
-    def _packet_in_handler(self, ev):
+    def packet_in_handler(self, ev):
         UtilsController.packet_in_handler(ev.msg)
-        
+    
+    @set_ev_cls(ofp_event.EventOFPBarrierReply, handler.MAIN_DISPATCHER)
+    def barrier_reply_handler(self, ev):
+        UtilsController.packet_in_handler(ev.msg)
 
     @set_ev_cls([ofp_event.EventOFPFlowStatsReply],handler.MAIN_DISPATCHER)
     def stats_reply_handler(self, ev):
@@ -315,7 +318,7 @@ class UtilsController(ControllerBase):
             return False
            
     @classmethod
-    def _wait(cls):
+    def _wait(cls, wait_timer):
         """ Wait until specific OFP message received
              or timer is exceeded. """
         assert cls._WAITER is None
@@ -324,7 +327,7 @@ class UtilsController(ControllerBase):
         cls._RECV_MSGS = []
 
         timeout = False
-        timer = hub.Timeout(WAIT_TIMER)
+        timer = hub.Timeout(wait_timer)
         try:
             cls._WAITER.wait()
         except hub.Timeout as t:
@@ -345,21 +348,32 @@ class UtilsController(ControllerBase):
                            for p in pkt.protocols if type(p) != str)
             return header_list, pkt
 
+
     @classmethod
     def packet_in_handler(cls, msg):
         header_list, pkt = cls._parser_header(msg.data)
         if ARP in header_list:
             if cls._SENDER != None:
-            	cls._SENDER.handle_arp(msg, header_list)
+                markTime( "Handle ARP_REQUEST Start")
+            cls._SENDER.handle_arp(msg, header_list)
         else:
             datapath = msg.datapath
             if cls._SENDER != None and\
                 datapath.id == cls._SENDER.get_dpid():
-                while not isinstance(cls._WAITER,hub.Event):
+                while not isinstance(cls._WAITER, hub.Event):
                     hub.sleep(1)
                 cls._WAITER.set()
                 cls._RECV_MSGS.append(msg.data)
-        
+
+    @classmethod
+    def barrier_reply_handler(cls, msg):
+        datapath = msg.datapath
+        if cls._SENDER != None and\
+            datapath.id == cls._SENDER.get_dpid():
+            while not isinstance(cls._WAITER, hub.Event):
+                hub.sleep(1)
+            cls._WAITER.set()
+
     def _get_pkt(self, test):
         def __test_pkt_from_json(test):
             test =json.loads(json.dumps(test))
@@ -494,7 +508,8 @@ class UtilsController(ControllerBase):
         #sender.add_arp_flow(cookie, sender_port, target_mac, vlan_id)
         sender.add_flow(cookie, priority, sender_port, vlan_id, dst_mac=sender_mac)
         sender.add_flow(cookie, priority, sender_port, vlan_id, src_mac=sender_mac)
-
+        sender.send_barrier_request()
+        self._wait(BARRIER_WAIT_TIMER)
         # transfer packet
         success_count = 0
         total_rtt = 0
@@ -515,7 +530,7 @@ class UtilsController(ControllerBase):
             timeout = start_time + WAIT_TIMER
             sender.send_packet_out_port(data[PKT_INGRESS], sender_port) 
             while timeout > count_time:
-                wait_timeout = self._wait()
+                wait_timeout = self._wait(WAIT_TIMER)
                 
                 if wait_timeout != True and\
                         self._check_icmp(self._RECV_MSGS[0], content):
@@ -666,6 +681,13 @@ class Sender(dict):
             self.logger.info(log_msg, srcip, dstip, extra=self.sw_id)
             self.logger.info('Send ARP reply to [%s]', srcip,
                                  extra=self.sw_id)
+
+    def send_barrier_request(self):
+        """ send a BARRIER_REQUEST message."""
+        datapath = self.dp
+        parser = self.dp.ofproto_parser
+        req = parser.OFPBarrierRequest(self.dp)
+        return datapath.send_msg(req)
 
     def _send_arp(self, arp_opcode, vlan_id, src_mac, dst_mac,
                  src_ip, dst_ip, arp_target_mac, in_port, output):
