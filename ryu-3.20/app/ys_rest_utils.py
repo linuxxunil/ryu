@@ -490,7 +490,7 @@ class UtilsController(ControllerBase):
                                     sender_mac, target_ip, target_mac, vlan_id=VLANID_NONE):
         times = 5
         max_time = 0
-        min_time = WAIT_TIMER + 1
+        min_time = 1500	# 1.5 sec
         avg_time = 0
         transmitted = 0
         received = 0
@@ -532,6 +532,7 @@ class UtilsController(ControllerBase):
                 wait_timeout = self._wait(WAIT_TIMER)
                 
                 if wait_timeout != True and\
+			len (self._RECV_MSGS) > 0 and \
                         self._check_icmp(self._RECV_MSGS[0], content):
                     
                     state = RES_PKT_STATE_OK
@@ -560,7 +561,7 @@ class UtilsController(ControllerBase):
                     RES_SENDER_MAC: sender_mac,
                     RES_TARGET_MAC: target_mac,
                     RES_MAX_TIME: max_time,
-                    RES_MIN_TIME: min_time if min_time < (WAIT_TIMER+1) else 0,
+                    RES_MIN_TIME: min_time if min_time < 1500 else 0,
                     RES_AVG_TIME: (float(total_rtt)/float(success_count)) if success_count != 0 else 0,
                     RES_RECEIVED: received,
                     RES_TRANSMITTED: transmitted,
