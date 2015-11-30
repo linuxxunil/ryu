@@ -38,6 +38,7 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import arp
 from ryu.lib.packet import vlan
 from ryu.lib.packet import icmp
+from ryu.lib.packet import ethernet
 from ryu.lib import addrconv
 from ryu.lib import dpid as dpid_lib
 from ryu.lib import hub
@@ -308,12 +309,20 @@ class UtilsController(ControllerBase):
         return ports
 
     @classmethod
-    def _check_icmp(cls, data, content):
+    def _check_icmp(cls, data, content, vlan_id, target_mac):
         header_list, pkt = cls._parser_header(data)
         if ICMP_ in header_list:
+            _eth = pkt.get_protocols(ethernet)[0]
             _icmp = pkt.get_protocols(icmp)[0]
             _data = _icmp.data.data
-            if _data ==  content:
+            if VLAN in header_list:
+                _vlan_id = header_list[VLAN].vid + 4096
+            else : _vlan_id = VLANID_NONE
+
+            if _data ==  content and\
+                _vlan_id == vlan_id and\
+                _eth.src == target_mac or\
+                _eth.dst == target_mac:
                 return True
             return False
            
@@ -355,7 +364,7 @@ class UtilsController(ControllerBase):
         if ARP in header_list:
             if cls._SENDER != None:
             	cls._SENDER.handle_arp(msg, header_list)
-        else:
+        elif ICMP_ in header_list:
             datapath = msg.datapath
             if cls._SENDER != None and\
                 datapath.id == cls._SENDER.get_dpid():
@@ -490,7 +499,7 @@ class UtilsController(ControllerBase):
                                     sender_mac, target_ip, target_mac, vlan_id=VLANID_NONE):
         times = 5
         max_time = 0
-        min_time = 1500	# 1.5 sec
+        min_time = WAIT_TIMER * 1000	# 1.0 sec
         avg_time = 0
         transmitted = 0
         received = 0
@@ -532,8 +541,9 @@ class UtilsController(ControllerBase):
                 wait_timeout = self._wait(WAIT_TIMER)
                 
                 if wait_timeout != True and\
-			len (self._RECV_MSGS) > 0 and \
-                        self._check_icmp(self._RECV_MSGS[0], content):
+		            len (self._RECV_MSGS) > 0 and\
+                    self._check_icmp(self._RECV_MSGS[0], 
+                                content, vlan_id, target_mac):
                     
                     state = RES_PKT_STATE_OK
                     rtt = (time.time() - start_time) * 1000 # ms
@@ -561,7 +571,7 @@ class UtilsController(ControllerBase):
                     RES_SENDER_MAC: sender_mac,
                     RES_TARGET_MAC: target_mac,
                     RES_MAX_TIME: max_time,
-                    RES_MIN_TIME: min_time if min_time < 1500 else 0,
+                    RES_MIN_TIME: min_time if min_time < WAIT_TIMER * 1000 else 0,
                     RES_AVG_TIME: (float(total_rtt)/float(success_count)) if success_count != 0 else 0,
                     RES_RECEIVED: received,
                     RES_TRANSMITTED: transmitted,

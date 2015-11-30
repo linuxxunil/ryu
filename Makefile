@@ -5,7 +5,7 @@ PWD=$(shell pwd)
 
 all:install_python install_package install_ryu install_exe
 install_python:
-	apt-get install python-routes python-webob python-paramiko python-pkg-resources #python-eventlet
+	apt-get install python-routes python-webob python-paramiko python-pkg-resources python-greenlet #python-eventlet
 install_ryu:
 	#cp -af ryu-3.20 $(DIST-PACKAGES-PATH)
 	#cp -af ryu-3.20.egg-info $(DIST-PACKAGES-PATH)
@@ -45,8 +45,6 @@ install_package:
 	cp -af pbr $(DIST-PACKAGES-PATH)
 	cp -af pbr-1.2.0.dist-info $(DIST-PACKAGES-PATH)
 	#greenlet
-	cp -af greenlet.so $(DIST-PACKAGES-PATH)
-	cp -af greenlet-0.4.9.egg-info $(DIST-PACKAGES-PATH)
 install_exe:
 	cp -f script/ryu-3.20 /usr/local/bin
 	cp -f script/ryu-manager-3.20 /usr/local/bin
