@@ -321,8 +321,8 @@ class UtilsController(ControllerBase):
 
             if _data ==  content and\
                 _vlan_id == vlan_id and\
-                _eth.src == target_mac or\
-                _eth.dst == target_mac:
+                (_eth.src == target_mac or\
+                _eth.dst == target_mac):
                 return True
             return False
            
@@ -370,8 +370,8 @@ class UtilsController(ControllerBase):
                 datapath.id == cls._SENDER.get_dpid():
                 while not isinstance(cls._WAITER, hub.Event):
                     hub.sleep(1)
-                cls._WAITER.set()
                 cls._RECV_MSGS.append(msg.data)
+                cls._WAITER.set()
 
     @classmethod
     def barrier_reply_handler(cls, msg):
