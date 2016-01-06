@@ -440,13 +440,21 @@ class LLDPPacket(object):
     @staticmethod
     def lldp_parse(data):
         pkt = packet.Packet(data)
+	
         i = iter(pkt)
         eth_pkt = i.next()
         assert type(eth_pkt) == ethernet.ethernet
 
-        lldp_pkt = i.next()
+	# Check dst mac
+	if not ( eth_pkt.dst == lldp.LLDP_MAC_NEAREST_BRIDGE or
+		eth_pkt.dst == lldp.LLDP_MAC_NEAREST_NON_TPMR_BRIDGE or
+		eth_pkt.dst == lldp.LLDP_MAC_NEAREST_CUSTOMER_BRIDGE ):
+            raise LLDPPacket.LLDPUnknownFormat(
+                msg='unknown dst mac %d' % eth_pkt.dst )
+	lldp_pkt = i.next()
         if type(lldp_pkt) != lldp.lldp:
             raise LLDPPacket.LLDPUnknownFormat()
+	
 
         tlv_chassis_id = lldp_pkt.tlvs[0]
         if tlv_chassis_id.subtype != lldp.ChassisID.SUB_LOCALLY_ASSIGNED:
@@ -613,8 +621,9 @@ class Switches(app_manager.RyuApp):
                 # TODO:XXX need other versions
                 if ofproto.OFP_VERSION == ofproto_v1_0.OFP_VERSION:
                     rule = nx_match.ClsRule()
-                    rule.set_dl_dst(addrconv.mac.text_to_bin(
-                                    lldp.LLDP_MAC_NEAREST_BRIDGE))
+		    # jesse : disable match dl_dst
+                    #rule.set_dl_dst(addrconv.mac.text_to_bin(
+                    #                lldp.LLDP_MAC_NEAREST_BRIDGE))
                     rule.set_dl_type(ETH_TYPE_LLDP)
                     actions = [ofproto_parser.OFPActionOutput(
                         ofproto.OFPP_CONTROLLER, self.LLDP_PACKET_LEN)]
@@ -624,8 +633,10 @@ class Switches(app_manager.RyuApp):
                         priority=0xFFFF)
                 elif ofproto.OFP_VERSION >= ofproto_v1_2.OFP_VERSION:
                     match = ofproto_parser.OFPMatch(
-                        eth_type=ETH_TYPE_LLDP,
-                        eth_dst=lldp.LLDP_MAC_NEAREST_BRIDGE)
+			eth_type=ETH_TYPE_LLDP)
+		    # jesse : disable match dl_dst
+                    #    eth_type=ETH_TYPE_LLDP,
+                    #    eth_dst=lldp.LLDP_MAC_NEAREST_BRIDGE)
                     # OFPCML_NO_BUFFER is set so that the LLDP is not
                     # buffered on switch
                     parser = ofproto_parser
