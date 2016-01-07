@@ -882,7 +882,7 @@ OFPET_METER_MOD_FAILED = 12         # Error in meter.
 OFPET_TABLE_FEATURES_FAILED = 13    # Setting table features failed.
 OFPET_EXPERIMENTER = 0xffff         # Experimenter error messages.
 
-# enum ofp_hello_failed_code (0)
+# enum ofp_hello_failed_code (type: 0)
 OFPHFC_INCOMPATIBLE = 0     # No compatible version.
 OFPHFC_EPERM = 1            # Permissions error.
 
@@ -892,7 +892,7 @@ OFP_HFC = {
     OFPHFC_EPERM        : "Permissions error."
 }
 
-# enum ofp_bad_request_code (1)
+# enum ofp_bad_request_code (type: 1)
 OFPBRC_BAD_VERSION = 0                  # ofp_header.version not supported.
 OFPBRC_BAD_TYPE = 1                     # ofp_header.type not supported.
 OFPBRC_BAD_MULTIPART = 2                # ofp_multipart_request.type not
@@ -934,7 +934,7 @@ OFP_BRC = {
     OFPBRC_MULTIPART_BUFFER_OVERFLOW : "ofp_multipart_request overflowed the assigned buffer."
 }
 
-# enum ofp_bad_action_code (2)
+# enum ofp_bad_action_code (type: 2)
 OFPBAC_BAD_TYPE = 0             # Unknown action type.
 OFPBAC_BAD_LEN = 1              # Length problem in actions.
 OFPBAC_BAD_EXPERIMENTER = 2     # Unknown experimenter id specified.
@@ -976,7 +976,7 @@ OFP_BAC = {
     OFPBAC_BAD_SET_ARGUMENT   : "Bad arguement in SET_FIELD action."
 }
 
-# enum ofp_bad_instruction_code (3)
+# enum ofp_bad_instruction_code (type: 3)
 OFPBIC_UNKNOWN_INST = 0         # Unknown instruction.
 OFPBIC_UNSUP_INST = 1           # Switch or table does not support
                                 # the instruction.
@@ -1002,7 +1002,7 @@ OFP_BIC = {
     OFPBIC_EPERM                : "Permissions error."
 }
 
-# enum ofp_bad_match_code (4)
+# enum ofp_bad_match_code (type: 4)
 OFPBMC_BAD_TYPE = 0             # Unsupported match type apecified by
                                 # the match.
 OFPBMC_BAD_LEN = 1              # Length problem in math.
@@ -1044,7 +1044,7 @@ OFP_BMC = {
     OFPBMC_EPERM            : "Permissions error."
 }
 
-# enum ofp_flow_mod_failed_code (5)
+# enum ofp_flow_mod_failed_code (type: 5)
 OFPFMFC_UNKNOWN = 0             # Unspecified error.
 OFPFMFC_TABLE_FULL = 1          # Flow not added because table was full.
 OFPFMFC_BAD_TABLE_ID = 2        # Table does not exist
@@ -1071,7 +1071,7 @@ OFP_FMFC = {
 
 }
 
-# enum ofp_group_mod_failed_code (6)
+# enum ofp_group_mod_failed_code (type: 6)
 OFPGMFC_GROUP_EXISTS = 0
 OFPGMFC_INVALID_GROUP = 1
 OFPGMFC_WEIGHT_UNSUPPORTED = 2      # Switch does not support unequal load
@@ -1121,7 +1121,7 @@ OFP_GMFC = {
     OFPGMFC_EPERM               : "Permissions error."
 }
 
-# enum ofp_port_mod_failed_code (7)
+# enum ofp_port_mod_failed_code (type: 7)
 OFPPMFC_BAD_PORT = 0        # Specified port does not exist.
 OFPPMFC_BAD_HW_ADDR = 1     # Specified hardware address does not
                             # match the port number.
@@ -1140,7 +1140,7 @@ OFP_PMFC = {
     OFPPMFC_EPERM               : "Permissions error."
 }
 
-# enum ofp_table_mod_failed_code (8)
+# enum ofp_table_mod_failed_code (type: 8)
 OFPTMFC_BAD_TABLE = 0       # Specified table does not exist.
 OFPTMFC_BAD_CONFIG = 1      # Specified config is invalid.
 OFPTMFC_EPERM = 2           # Permissions error
@@ -1152,7 +1152,7 @@ OFP_TMFC = {
     OFPTMFC_EPERM               : "Permissions error"
 }
 
-# enum ofp_queue_op_failed_code (9)
+# enum ofp_queue_op_failed_code (type: 9)
 OFPQOFC_BAD_PORT = 0        # Invalid port (or port does not exist).
 OFPQOFC_BAD_QUEUE = 1       # Queue does not exist.
 OFPQOFC_EPERM = 2           # Permissions error.
@@ -1168,7 +1168,7 @@ OFP_QOFC = {
     OFPQOFC_EPERM               : "Permissions error."
 }
 
-# enum ofp_switch_config_failed_code (10)
+# enum ofp_switch_config_failed_code (type: 10)
 OFPSCFC_BAD_FLAGS = 0       # Specified flags is invalid.
 OFPSCFC_BAD_LEN = 1         # Specified len is invalid.
 OFPSCFC_EPERM = 2           # Permissions error.
@@ -1180,7 +1180,7 @@ OFP_SCFC = {
     OFPSCFC_EPERM               : "Permissions error."
 }
 
-# enum ofp_role_request_failed_code (11)
+# enum ofp_role_request_failed_code (type: 11)
 OFPRRFC_STALE = 0           # Stale Message: old generation_id.
 OFPRRFC_UNSUP = 1           # Controller role change unsupported.
 OFPRRFC_BAD_ROLE = 2        # Invalid role.
@@ -1192,7 +1192,7 @@ OFP_RRFC = {
     OFPRRFC_BAD_ROLE            : "Invalid role."
 }
 
-# enum ofp_meter_mod_failed_code (12)
+# enum ofp_meter_mod_failed_code (type: 12)
 OFPMMFC_UNKNOWN = 0         # Unspecified error.
 OFPMMFC_METER_EXISTS = 1    # Meter not added because a Meter ADD
                             # attempted to replace an existing Meter.
@@ -1232,7 +1232,7 @@ OFP_MMFC = {
                                     for a meter has been exceeded."
 }
 
-# enum ofp_table_features_failed_code (13)
+# enum ofp_table_features_failed_code (type: 13)
 OFPTFFC_BAD_TABLE  = 0      # Specified table does not exist.
 OFPTFFC_BAD_METADATA = 1    # Invalid metadata mask.
 OFPTFFC_BAD_TYPE = 2        # Unknown property type.

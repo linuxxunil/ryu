@@ -450,7 +450,7 @@ class LLDPPacket(object):
 		eth_pkt.dst == lldp.LLDP_MAC_NEAREST_NON_TPMR_BRIDGE or
 		eth_pkt.dst == lldp.LLDP_MAC_NEAREST_CUSTOMER_BRIDGE ):
             raise LLDPPacket.LLDPUnknownFormat(
-                msg='unknown dst mac %d' % eth_pkt.dst )
+                msg='unknown dst mac %s' % eth_pkt.dst )
 	lldp_pkt = i.next()
         if type(lldp_pkt) != lldp.lldp:
             raise LLDPPacket.LLDPUnknownFormat()
