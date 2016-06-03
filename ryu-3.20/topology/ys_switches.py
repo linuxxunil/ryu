@@ -30,18 +30,18 @@ from ryu.lib import addrconv, hub
 from ryu.lib.mac import DONTCARE_STR
 from ryu.lib.dpid import dpid_to_str, str_to_dpid
 from ryu.lib.port_no import port_no_to_str
-from ryu.lib.packet import packet, ethernet, lldp
+from ryu.lib.packet import packet, ethernet, lldp, vlan
 from ryu.ofproto.ether import ETH_TYPE_LLDP
+from ryu.ofproto.ether import ETH_TYPE_8021Q
 from ryu.ofproto import ofproto_v1_0
 from ryu.ofproto import nx_match
 from ryu.ofproto import ofproto_v1_2
 from ryu.ofproto import ofproto_v1_3
 from ryu.ofproto import ofproto_v1_4
 
-
 LOG = logging.getLogger(__name__)
-
-
+VLANID_NONE = 0
+VLANID_MAX = 4094
 CONF = cfg.CONF
 
 #CONF.register_cli_opts([
@@ -225,6 +225,12 @@ class PortData(object):
         self.timestamp = None
         self.sent = 0
 
+    def get_lldp_data(self):
+	return self.lldp_data
+
+    def set_lldp_data(self, lldp_data):
+        self.lldp_data = lldp_data
+
     def lldp_sent(self):
         self.timestamp = time.time()
         self.sent += 1
@@ -407,15 +413,31 @@ class LLDPPacket(object):
     class LLDPUnknownFormat(RyuException):
         message = '%(msg)s'
 
+    
     @staticmethod
-    def lldp_packet(dpid, port_no, dl_addr, ttl):
-        pkt = packet.Packet()
+    #def lldp_packet(dpid, port_no, dl_addr, ttl):
+    def lldp_packet(dpid, port_no, dl_addr, ttl, vlan_vid):
+	# by jesse : add vlan
+        if vlan_vid != VLANID_NONE:
+	    ether_proto = ETH_TYPE_8021Q
+	    pcp = 0
+	    cfi = 0
+	    vlan_ether = ETH_TYPE_LLDP
+	    v = vlan.vlan(pcp, cfi, vlan_vid, vlan_ether)
 
-        dst = lldp.LLDP_MAC_NEAREST_BRIDGE
-        src = dl_addr
-        ethertype = ETH_TYPE_LLDP
-        eth_pkt = ethernet.ethernet(dst, src, ethertype)
-        pkt.add_protocol(eth_pkt)
+	    dst = lldp.LLDP_MAC_NEAREST_BRIDGE
+	    src = dl_addr
+	    pkt = packet.Packet()
+	    e = ethernet.ethernet(dst, src, ether_proto)
+	    pkt.add_protocol(e)
+	    pkt.add_protocol(v)
+	else:
+            pkt = packet.Packet()
+            dst = lldp.LLDP_MAC_NEAREST_BRIDGE
+            src = dl_addr
+            ethertype = ETH_TYPE_LLDP
+            eth_pkt = ethernet.ethernet(dst, src, ethertype)
+            pkt.add_protocol(eth_pkt)
 
         tlv_chassis_id = lldp.ChassisID(
             subtype=lldp.ChassisID.SUB_LOCALLY_ASSIGNED,
@@ -438,19 +460,27 @@ class LLDPPacket(object):
         return pkt.data
 
     @staticmethod
-    def lldp_parse(data):
+    #def lldp_parse(data):
+    def lldp_parse(data, vlan_vid):
         pkt = packet.Packet(data)
-	
+
         i = iter(pkt)
         eth_pkt = i.next()
         assert type(eth_pkt) == ethernet.ethernet
-
+	
 	# Check dst mac
 	if not ( eth_pkt.dst == lldp.LLDP_MAC_NEAREST_BRIDGE or
 		eth_pkt.dst == lldp.LLDP_MAC_NEAREST_NON_TPMR_BRIDGE or
 		eth_pkt.dst == lldp.LLDP_MAC_NEAREST_CUSTOMER_BRIDGE ):
             raise LLDPPacket.LLDPUnknownFormat(
                 msg='unknown dst mac %s' % eth_pkt.dst )
+
+	# by jesse : add vlan
+        if vlan_vid != VLANID_NONE:
+	    vlan_pkt = i.next()
+	    if type(vlan_pkt) != vlan.vlan:
+                raise LLDPPacket.LLDPUnknownFormat()
+
 	lldp_pkt = i.next()
         if type(lldp_pkt) != lldp.lldp:
             raise LLDPPacket.LLDPUnknownFormat()
@@ -488,7 +518,10 @@ class Switches(app_manager.RyuApp):
                event.EventLinkAdd, event.EventLinkDelete]
 
     DEFAULT_TTL = 120  # unused. ignored.
-    LLDP_PACKET_LEN = len(LLDPPacket.lldp_packet(0, 0, DONTCARE_STR, 0))
+
+    # by jesse : add vlan
+    LLDP_VLANID = VLANID_NONE
+    LLDP_PACKET_LEN = len(LLDPPacket.lldp_packet(0, 0, DONTCARE_STR, 0, LLDP_VLANID))
 
     LLDP_SEND_GUARD = .05
     LLDP_SEND_PERIOD_PER_PORT = 5
@@ -515,6 +548,9 @@ class Switches(app_manager.RyuApp):
         # by jesse : for same switch port link (in_port == out_port)
         self.sports = PortDataState()
         self.slinks = LinkState()
+
+	# by jesse : add vlan
+	self.update_lldp_data_flag = False
 
         self.link_discovery = self.CONF.observe_links
         if self.link_discovery:
@@ -562,7 +598,7 @@ class Switches(app_manager.RyuApp):
 
     def _port_added(self, port):
         lldp_data = LLDPPacket.lldp_packet(
-            port.dpid, port.port_no, port.hw_addr, self.DEFAULT_TTL)
+            port.dpid, port.port_no, port.hw_addr, self.DEFAULT_TTL, self.LLDP_VLANID)
         self.ports.add_port(port, lldp_data)
         # LOG.debug('_port_added dpid=%s, port_no=%s, live=%s',
         #           port.dpid, port.port_no, port.is_live())
@@ -624,6 +660,11 @@ class Switches(app_manager.RyuApp):
 		    # jesse : disable match dl_dst
                     #rule.set_dl_dst(addrconv.mac.text_to_bin(
                     #                lldp.LLDP_MAC_NEAREST_BRIDGE))
+	
+		    # by jesse : add vlan
+		    # unsupport lldp tagged for some switch
+		    #if self.LLDP_VLANID != VLANID_NONE:
+		    #    rule.set_dl_vlan(self.LLDP_VLANID)
                     rule.set_dl_type(ETH_TYPE_LLDP)
                     actions = [ofproto_parser.OFPActionOutput(
                         ofproto.OFPP_CONTROLLER, self.LLDP_PACKET_LEN)]
@@ -632,6 +673,11 @@ class Switches(app_manager.RyuApp):
                         idle_timeout=0, hard_timeout=0, actions=actions,
                         priority=0xFFFF)
                 elif ofproto.OFP_VERSION >= ofproto_v1_2.OFP_VERSION:
+		    # by jesse : add vlan
+                    # unsupport lldp tagged for some switch
+		    #if self.LLDP_VLANID != VLANID_NONE:
+		    #	match = ofproto_parser.OFPMatch(
+                    #    eth_type=ETH_TYPE_LLDP, vlan_vid=self.LLDP_VLANID)
                     match = ofproto_parser.OFPMatch(
 			eth_type=ETH_TYPE_LLDP)
 		    # jesse : disable match dl_dst
@@ -768,7 +814,7 @@ class Switches(app_manager.RyuApp):
         msg = ev.msg
         try:
             # by jesse : add src_hw_addr
-            src_dpid, src_port_no, src_hw_addr = LLDPPacket.lldp_parse(msg.data)
+            src_dpid, src_port_no, src_hw_addr = LLDPPacket.lldp_parse(msg.data, self.LLDP_VLANID)
         except LLDPPacket.LLDPUnknownFormat as e:
             # This handler can receive all the packtes which can be
             # not-LLDP packet. Ignore it silently
@@ -910,6 +956,18 @@ class Switches(app_manager.RyuApp):
                 self.send_lldp_packet(port)
                 hub.sleep(self.LLDP_SEND_GUARD)      # don't burst
 
+
+	    if self.update_lldp_data_flag == True :
+                self.LLDP_PACKET_LEN = len(LLDPPacket.lldp_packet(0, 0, DONTCARE_STR, 0, self.LLDP_VLANID))
+                items = self.ports.items()
+                for ports in items:
+                        if type(ports[0]) == Port and type(ports[1]) == PortData :
+                                lldp_data = LLDPPacket.lldp_packet(
+                                ports[0].dpid, ports[0].port_no, ports[0].hw_addr, self.DEFAULT_TTL, self.LLDP_VLANID)
+                                ports[1].set_lldp_data(lldp_data)
+                self.update_lldp_data_flag = False
+
+
             if timeout is not None and ports:
                 timeout = 0     # We have already slept
             # LOG.debug('lldp sleep %s', timeout)
@@ -1035,4 +1093,17 @@ class Switches(app_manager.RyuApp):
 
         rep = event.EventLLDPReply(req.src, self.LLDP_SEND_PERIOD_PER_PORT)
         self.reply_to_request(req, rep)
+
+
+    # by jesse
+    @set_ev_cls(event.EventVlanRequest)
+    def lldp_request_handler(self, req):
+        if req.method == 'POST':
+            if req.vlan_vid is not None :
+                self.LLDP_VLANID = req.vlan_vid
+		self.update_lldp_data_flag = True
+
+        rep = event.EventVlanReply(req.src, self.LLDP_VLANID)
+        self.reply_to_request(req, rep)
+
 

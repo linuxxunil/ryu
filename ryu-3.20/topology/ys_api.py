@@ -55,4 +55,13 @@ def set_lldp_interval(app, method, interval):
 	return rep.interval
 
 
+# by jesse : vlan 
+def get_vlan(app, method):
+        rep = app.send_request(event.EventVlanRequest(method))
+        return rep.vlan_vid
+
+def set_vlan(app, method, vlan_vid):
+        rep = app.send_request(event.EventVlanRequest(method, vlan_vid))
+        return rep.vlan_vid
+
 app_manager.require_app('ryu.topology.ys_switches', api_style=True)

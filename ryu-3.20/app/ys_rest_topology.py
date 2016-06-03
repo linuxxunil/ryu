@@ -20,7 +20,7 @@ from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.base import app_manager
 from ryu.lib import dpid as dpid_lib
 from ryu.topology.ys_api import get_switch, get_link, get_clink, \
-                        get_lldp_interval, set_lldp_interval, get_slink
+                        get_lldp_interval, set_lldp_interval, get_slink, get_vlan, set_vlan
 
 # REST API for switch configuration
 #
@@ -55,6 +55,15 @@ from ryu.topology.ys_api import get_switch, get_link, get_clink, \
 #
 # request body format:
 #   {"interval": "<float>"}
+# 
+# get vlan for lldp 
+# GET /v1.0/topology/vlan
+#
+# set vlan for lldp 
+# POST /v1.0/topology/vlan
+#
+# request body format:
+#   {"vlan_vid": "<int, untagged = 0>"}
 # 
 
 
@@ -178,3 +187,33 @@ class TopologyController(ControllerBase):
         body = json.dumps(dict)
         return Response(content_type='application/json', body=body)
 
+    # by jesse 
+    @route('topology', '/v1.0/topology/vlan',
+           methods=['GET'])
+    def get_vlan(self, req, **kwargs):
+        return self._vlan(req, **kwargs)
+
+    @route('topology', '/v1.0/topology/vlan',
+           methods=['POST'])
+    def set_vlan(self, req, **kwargs):
+        return self._vlan(req, **kwargs)
+
+
+    # by jesse
+    def _vlan(self, req, **kwargs):
+        if req.method == 'GET':
+            req_vlan_vid = get_vlan(self.topology_api_app, req.method)
+        elif req.method == 'POST':
+            try:
+                param = json.loads(req.body) if req.body else {}
+            except SyntaxError :
+                return Response(status=400)
+            vlan_vid = param['vlan_vid']
+            if vlan_vid is not None :
+                req_vlan_vid = set_vlan(self.topology_api_app, req.method, vlan_vid)
+            else:
+                req_vlan_vid = -1
+
+        dict = { "vlan_vid":req_vlan_vid }
+        body = json.dumps(dict)
+        return Response(content_type='application/json', body=body)

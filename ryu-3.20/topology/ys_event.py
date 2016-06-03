@@ -195,3 +195,25 @@ class EventLLDPReply(event.EventReplyBase):
     def __str__(self):
         return 'EventLLDPReply<dst=%s, interval=%f, interval>' % \
             (self.dst, self.interval)
+
+# by jesse
+class EventVlanRequest(event.EventRequestBase):
+    def __init__(self, method, vlan_vid = None):
+        super(EventVlanRequest, self).__init__()
+        self.dst = 'switches'
+        self.method = method
+        self.vlan_vid = vlan_vid
+
+    def __str__(self):
+        return 'EventLLDPRequest<src=%s>' % \
+            (self.src)
+# by jesse
+class EventVlanReply(event.EventReplyBase):
+    def __init__(self, dst, vlan_vid):
+        super(EventVlanReply, self).__init__(dst)
+        self.vlan_vid = vlan_vid
+
+    def __str__(self):
+        return 'EventLLDPReply<dst=%s, interval=%f, interval>' % \
+            (self.dst, self.vlan_vid)
+
