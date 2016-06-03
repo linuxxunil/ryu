@@ -475,13 +475,18 @@ class LLDPPacket(object):
             raise LLDPPacket.LLDPUnknownFormat(
                 msg='unknown dst mac %s' % eth_pkt.dst )
 
-	# by jesse : add vlan
-        if vlan_vid != VLANID_NONE:
-	    vlan_pkt = i.next()
-	    if type(vlan_pkt) != vlan.vlan:
-                raise LLDPPacket.LLDPUnknownFormat()
+	# by jesse : add vlan 
+        #if vlan_vid != VLANID_NONE:
+	#    vlan_pkt = i.next()
+	#    if type(vlan_pkt) != vlan.vlan:
+        #        raise LLDPPacket.LLDPUnknownFormat()
+        tmp_pkt = i.next()
+        if type(tmp_pkt) == vlan.vlan :
+            vlan_pkt = tmp_pkt
+            lldp_pkt = i.next()
+        else :
+            lldp_pkt = tmp_pkt
 
-	lldp_pkt = i.next()
         if type(lldp_pkt) != lldp.lldp:
             raise LLDPPacket.LLDPUnknownFormat()
 	
